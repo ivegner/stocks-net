@@ -16,9 +16,10 @@ quandl.ApiConfig.api_key = "KDH1TFmmmcrjgynvRdWg"
 
 '''  CONSTANTS '''
 
-HI_LO_DIFF = 0.02
-MIN_MAX_PERIOD = 2
+HI_LO_DIFF = 0.05
+MIN_MAX_PERIOD = 10
 SECURITY = str(sys.argv[1])
+TEST_CASH = 10000
 # NUM_GENS = int(sys.argv[2])
 
 ''''''''''''''''''
@@ -42,15 +43,16 @@ if not os.path.isfile(SECURITY[5:] + "_data.pickle"):
 
     trY = pd.Series(name="signal", dtype=np.ndarray, index=range(0, len(price)))
     for _, idx in np.ndenumerate(minIdxs):
+        if idx < MIN_MAX_PERIOD: continue
         max_price = max(price[idx - MIN_MAX_PERIOD: idx + MIN_MAX_PERIOD])
         if ((max_price - price[idx]) / price[idx]) > HI_LO_DIFF:    #if the difference between max and min is > 2%
             trY.set_value(idx, np.array([1, 0, 0], np.int32))
 
     for _, idx in np.ndenumerate(maxIdxs):
+        if idx < MIN_MAX_PERIOD: continue
         min_price = min(price[idx - MIN_MAX_PERIOD: idx + MIN_MAX_PERIOD])
         if ((price[idx] - min_price)/ min_price) > HI_LO_DIFF:  #if the difference between max and min is > 2%
             trY.set_value(idx, np.array([0, 0, 1], np.int32))
-    print(df.isnull().any(axis=1))
 
     for idx in pd.isnull(trY).nonzero()[0]:
         trY.set_value(idx, np.array([0, 1, 0], np.int32))
@@ -67,38 +69,35 @@ if not os.path.isfile(SECURITY[5:] + "_data.pickle"):
     for col in inputs:
         inputs[col] = np.array(inputs[col])
 
-    inputs["bband_u"], inputs["bband_m"], inputs["bband_l"] = ta.BBANDS(inputs, 5)
-    inputs["sma_5"] = ta.SMA(inputs, timeperiod = 5)
-    inputs["sma_10"] = ta.SMA(inputs, timeperiod = 10)
-    inputs["adx_5"] = ta.ADX(inputs, timeperiod = 5)
-    inputs["adx_10"] = ta.ADX(inputs, timeperiod = 10)
-    inputs["macd"], inputs["macdsignal"], inputs["macdhist"] = ta.MACD(inputs, 5, 10, 3)
-    inputs["mfi_5"] = ta.MFI(inputs, 5)
-    inputs["mfi_10"] = ta.MFI(inputs, 10)
-    inputs["ult_quick"] = ta.ULTOSC(inputs, 3, 6, 12)
-    inputs["ult_slow"] = ta.ULTOSC(inputs, 5, 10, 20)
-    inputs["willr_5"] = ta.WILLR(inputs, 5)
-    inputs["willr_10"] = ta.WILLR(inputs, 10)
-    inputs["slowk"], inputs["slowd"] = ta.STOCH(inputs)
-    inputs["mom"] = ta.MOM(inputs, 5)
+    for n in range(2, 20):
+        print(n)
+        inputs["bband_u_"+str(n)], inputs["bband_m_"+str(n)], inputs["bband_l_"+str(n)] = ta.BBANDS(inputs, n)
+        inputs["sma_"+str(n)] = ta.SMA(inputs, timeperiod = n)
+        inputs["adx_"+str(n)] = ta.ADX(inputs, timeperiod = n)
+        inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACD(inputs, n, n*2, n*2/3)
+        inputs["mfi_"+str(n)] = ta.MFI(inputs, n)
+        inputs["ult_"+str(n)] = ta.ULTOSC(inputs, n, n*2, n*4)
+        inputs["willr_"+str(n)] = ta.WILLR(inputs, n)
+        inputs["slowk"], inputs["slowd"] = ta.STOCH(inputs)
+        inputs["mom_"+str(n)] = ta.MOM(inputs, n)
 
     df = df.from_dict(inputs)
-    print(df.head())
 
     ''' BUILD NEURAL NET INPUTS ''' # Cut 20 for all the indicators to catch up
     print("Normalizing inputs...")
-    trY = np.vstack(trY.values)[20:]
-    trX = df.values[20:]
+    trY = np.vstack(trY.values)[80:]
+    trX = df.values[80:]
+    price = price[80:]
 
     trX = prep.normalize(prep.scale(trX))   # ain't I so clever
-    trX, testX, trY, testY = train_test_split(trX, trY, test_size = 0.3, random_state=0)
+    trX, testX, trY, testY, price, __ = train_test_split(trX, trY, price, test_size = 0.3, random_state=0)
     print("Pickling...")
-    pickle.dump({"trX": trX, "trY": trY, "testX": testX, "testY": testY}, open(SECURITY[5:] + "_data.pickle", "wb"))
+    pickle.dump({"trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": price}, open(SECURITY[5:] + "_data.pickle", "wb"))
 
 else:
     print("Pickle found, loading...")
     _data = pickle.load(open(SECURITY[5:] + "_data.pickle", "rb"))
-    trX, trY, testX, testY = _data["trX"], _data["trY"], _data["testX"], _data["testY"]
+    trX, trY, testX, testY, price = _data["trX"], _data["trY"], _data["testX"], _data["testY"], _data["price"]
 
 # ### RANDOM INPUTS
 # trX = np.random.uniform(low=0.0, high=400.0, size=(9049,5))
@@ -135,10 +134,39 @@ def neural_network_model(data):
 
     return layers[-1]["output"]
 
+def cost_function(predicted):
+    cash = TEST_CASH
+    predicted = tf.argmax(predicted, 1)
+    shares = 0
+    flag = 0
+    for day_price, bar in zip(price, tf.unpack(predicted, 0)):
+        if bar == [0, 0, 1]:    #buy
+            if flag == 0:       #no position
+                shares = cash / day_price
+                cash -= shares * day_price 
+                flag = 1
+
+            elif flag == -1:    #short
+                cash += shares * day_price
+                shares = 0
+                flag = 0
+
+        elif bar == [1, 0, 0]:    #sell
+            if flag == 0:       # no position
+                shares = cash / day_price
+                cash -= shares * day_price 
+                flag = -1
+
+            elif flag == 1:    # long
+                cash += shares * day_price
+                shares = 0
+                flag = 0
+    return tf.constant(cash)
+
 def train_neural_network(x):
     print("Training...")
     prediction = neural_network_model(x)
-    cost = tf.reduce_mean( tf.nn.softmax_cross_entropy_with_logits(prediction,y) )
+    cost = 100 / cost_function(prediction)
     optimizer = tf.train.AdamOptimizer().minimize(cost)
     
     hm_epochs = 20
@@ -146,17 +174,14 @@ def train_neural_network(x):
         sess.run(tf.initialize_all_variables())
 
         for epoch in range(hm_epochs):
-            _, c = sess.run([optimizer, cost], feed_dict={x: trX, y: trY})
+            _, c = sess.run([optimizer, cost], feed_dict={x: trX, y: trY})  #sets session placeholders to actual values
 
             print("Epoch", epoch, "completed out of", hm_epochs, "loss:", c)
 
             correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
+            # print(sess.run(prediction, feed_dict={x: trX, y: trY}))   #debug, to see outputs of prediction
 
             accuracy = tf.reduce_mean(tf.cast(correct, "float"))
             print("Accuracy:",accuracy.eval({x:testX, y:testY}))
 
 train_neural_network(x)
-
-
-
-
