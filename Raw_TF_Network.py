@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.python.framework import ops
 import quandl
 import pandas as pd
 import numpy as np
@@ -16,10 +17,10 @@ quandl.ApiConfig.api_key = "KDH1TFmmmcrjgynvRdWg"
 
 '''  CONSTANTS '''
 
-HI_LO_DIFF = 0.05
-MIN_MAX_PERIOD = 10
+HI_LO_DIFF = 0.02
+MIN_MAX_PERIOD = 3
 SECURITY = str(sys.argv[1])
-TEST_CASH = 10000
+TEST_CASH = 10000.0
 # NUM_GENS = int(sys.argv[2])
 
 ''''''''''''''''''
@@ -116,32 +117,36 @@ y = tf.placeholder("float")
 # test_x = tf.placeholder("float", [None, layer_sizes[0]])
 # test_y = tf.placeholder("float")
 
-def neural_network_model(data):
-    layers = []
-    for i, size in enumerate(layer_sizes):
-        if i != len(layer_sizes) - 1:    # If it's not the last element in layer_sizes (aka not the output size), give it weights and biases
-            layers.append({"weights":tf.Variable(tf.random_normal([size, layer_sizes[i+1]])),
-                           "biases":tf.Variable(tf.random_normal([layer_sizes[i+1]]))})
+def py_func(func, inp, Tout, stateful=True, name=None, grad=None):  #I've no idea what this is
+    rnd_name = 'PyFuncGrad' + str(np.random.randint(0, 1E+8))
+    tf.RegisterGradient(rnd_name)(grad)
+    g = tf.get_default_graph()
+    with g.gradient_override_map({"PyFunc": rnd_name}):
+        return tf.py_func(func, inp, Tout, stateful=stateful, name=name)
 
-            if i == 0:   # the first layer
-                layers[0]["output"] = tf.add(tf.matmul(data, layers[0]["weights"]), layers[0]["biases"])
-                layers[0]["output"] = tf.nn.sigmoid(layers[0]["output"])
-            else:
-                layers[i]["output"] = tf.add(tf.matmul(layers[i-1]["output"], layers[i]["weights"]), layers[i]["biases"])
+def trade_cost_func(x, name=None):
+    with ops.name_scope(name, "TradeCost", [x]) as name:
+        cost = py_func(cost_function,
+                        [x],
+                        [tf.float32],
+                        name=name,
+                        grad=cost_grad)
+        return cost[0]
 
-                if i != len(layer_sizes) - 2:    # Apply relu if it's not the last layer
-                    layers[i]["output"] = tf.nn.sigmoid(layers[i]["output"])
-
-    return layers[-1]["output"]
+def cost_grad(op, grad):
+    return tf.reshape(tf.convert_to_tensor([0.0, 0.0, 0.0]), (1, 3))
 
 def cost_function(predicted):
     cash = TEST_CASH
-    predicted = tf.argmax(predicted, 1)
     shares = 0
     flag = 0
+    print("test0")
+    print(predicted.get_shape())
     for day_price, bar in zip(price, tf.unpack(predicted, 0)):
+        print("test1")
         if bar == [0, 0, 1]:    #buy
             if flag == 0:       #no position
+                print("buy")
                 shares = cash / day_price
                 cash -= shares * day_price 
                 flag = 1
@@ -161,12 +166,31 @@ def cost_function(predicted):
                 cash += shares * day_price
                 shares = 0
                 flag = 0
-    return tf.constant(cash)
+    print("return")
+    return tf.to_float(1/cash)
+
+def neural_network_model(data):
+    layers = []
+    for i, size in enumerate(layer_sizes):
+        if i != len(layer_sizes) - 1:    # If it's not the last element in layer_sizes (aka not the output size), give it weights and biases
+            layers.append({"weights":tf.Variable(tf.random_normal([size, layer_sizes[i+1]])),
+                           "biases":tf.Variable(tf.random_normal([layer_sizes[i+1]]))})
+
+            if i == 0:   # the first layer
+                layers[0]["output"] = tf.add(tf.matmul(data, layers[0]["weights"]), layers[0]["biases"])
+                layers[0]["output"] = tf.nn.sigmoid(layers[0]["output"])
+            else:
+                layers[i]["output"] = tf.add(tf.matmul(layers[i-1]["output"], layers[i]["weights"]), layers[i]["biases"])
+
+                if i != len(layer_sizes) - 2:    # Apply sigmoid if it's not the last layer
+                    layers[i]["output"] = tf.nn.sigmoid(layers[i]["output"])
+
+    return tf.one_hot(tf.argmax(layers[-1]["output"], 1), depth = 3, axis = -1)
 
 def train_neural_network(x):
     print("Training...")
     prediction = neural_network_model(x)
-    cost = 100 / cost_function(prediction)
+    cost = trade_cost_func(prediction)
     optimizer = tf.train.AdamOptimizer().minimize(cost)
     
     hm_epochs = 20
