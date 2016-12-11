@@ -17,88 +17,105 @@ quandl.ApiConfig.api_key = "KDH1TFmmmcrjgynvRdWg"
 
 '''  CONSTANTS '''
 
-HI_LO_DIFF = 0.02
+HI_LO_DIFF = 0.03
 MIN_MAX_PERIOD = 3
-SECURITY = str(sys.argv[1])
+PICKLE_NAME = "_".join(s[5:] for s in sys.argv[1:])
 TEST_CASH = 10000.0
 # NUM_GENS = int(sys.argv[2])
 
 ''''''''''''''''''
 
-if not os.path.isfile(SECURITY[5:] + "_data.pickle"):
+if not os.path.isfile(PICKLE_NAME + "_data.pickle"):
     print("No pickle found, getting data...")
     # df = pd.concat([quandl.get("WIKI/AAPL"), quandl.get("WIKI/F"), quandl.get("WIKI/XOM")])
-    df = quandl.get(SECURITY)
+    df = pd.DataFrame()
+    Y = pd.Series()
+    for sec in sys.argv[1:]:
+        sec_df = quandl.get(sec)
 
-    if "Adj. Close" in df.columns:
-        df = df[["Adj. Open",  "Adj. High",  "Adj. Low",  "Adj. Close", "Adj. Volume"]]
-        df.rename(columns=lambda x: x[5:].lower(), inplace=True)    # Remove the "Adj. " and make lowercase
-    elif "Close" in df.columns:
-        df = df[["Open",  "High",  "Low",  "Close", "Volume"]]
-        df.rename(columns=lambda x: x.lower(), inplace=True)    # make lowercase
+        if "Adj. Close" in sec_df.columns:
+            sec_df = sec_df[["Adj. Open",  "Adj. High",  "Adj. Low",  "Adj. Close", "Adj. Volume"]]
+            sec_df.rename(columns=lambda x: x[5:].lower(), inplace=True)    # Remove the "Adj. " and make lowercase
+        elif "Close" in sec_df.columns:
+            sec_df = sec_df[["Open",  "High",  "Low",  "Close", "Volume"]]
+            sec_df.rename(columns=lambda x: x.lower(), inplace=True)    # make lowercase
 
-    print("Calculating output...")
-    price = df['close'].values
-    minIdxs = argrelextrema(price, np.less)
-    maxIdxs = argrelextrema(price, np.greater)
+        print("Calculating output...")
+        price = sec_df['close'].values
+        minIdxs = argrelextrema(price, np.less)
+        maxIdxs = argrelextrema(price, np.greater)
 
-    trY = pd.Series(name="signal", dtype=np.ndarray, index=range(0, len(price)))
-    for _, idx in np.ndenumerate(minIdxs):
-        if idx < MIN_MAX_PERIOD: continue
-        max_price = max(price[idx - MIN_MAX_PERIOD: idx + MIN_MAX_PERIOD])
-        if ((max_price - price[idx]) / price[idx]) > HI_LO_DIFF:    #if the difference between max and min is > 2%
-            trY.set_value(idx, np.array([1, 0, 0], np.int32))
 
-    for _, idx in np.ndenumerate(maxIdxs):
-        if idx < MIN_MAX_PERIOD: continue
-        min_price = min(price[idx - MIN_MAX_PERIOD: idx + MIN_MAX_PERIOD])
-        if ((price[idx] - min_price)/ min_price) > HI_LO_DIFF:  #if the difference between max and min is > 2%
-            trY.set_value(idx, np.array([0, 0, 1], np.int32))
+        sec_Y = pd.Series(name="signal", dtype=np.ndarray, index=range(0, len(price)))
+        n=0
+        for _, idx in np.ndenumerate(minIdxs):
+            if idx < MIN_MAX_PERIOD: continue
+            max_price = max(price[idx: idx + MIN_MAX_PERIOD])
+            if ((max_price - price[idx]) / price[idx]) > HI_LO_DIFF:    #if the difference between max and min is > 2%
+                sec_Y.set_value(idx, np.array([1, 0, 0], np.int32))
+                n+=1
 
-    for idx in pd.isnull(trY).nonzero()[0]:
-        trY.set_value(idx, np.array([0, 1, 0], np.int32))
+        print("MINS:", n)
+        n=0
+        for _, idx in np.ndenumerate(maxIdxs):
+            if idx < MIN_MAX_PERIOD: continue
+            min_price = min(price[idx: idx + MIN_MAX_PERIOD])
+            if ((price[idx] - min_price)/ min_price) > HI_LO_DIFF:  #if the difference between max and min is > 2%
+                sec_Y.set_value(idx, np.array([0, 0, 1], np.int32))
+                n+=1
+        print("MAXS:", n)
 
-    df.reset_index(drop=True, inplace = True)
-    for idx, val in df.isnull().any(axis=1).iteritems():
-        if val == True:
-            df.drop(idx, inplace = True)
-            trY.drop(idx, inplace = True)
+        for idx in pd.isnull(sec_Y).nonzero()[0]:
+            sec_Y.set_value(idx, np.array([0, 1, 0], np.int32))
 
-    ''' INDICATORS '''
-    print("Building indicators...")
-    inputs = df.to_dict(orient="list")
-    for col in inputs:
-        inputs[col] = np.array(inputs[col])
+        sec_df.reset_index(drop=True, inplace = True)
+        for idx, val in sec_df.isnull().any(axis=1).iteritems():
+            if val == True:
+                sec_df.drop(idx, inplace = True)
+                sec_Y.drop(idx, inplace = True)
 
-    for n in range(2, 20):
-        print(n)
-        inputs["bband_u_"+str(n)], inputs["bband_m_"+str(n)], inputs["bband_l_"+str(n)] = ta.BBANDS(inputs, n)
-        inputs["sma_"+str(n)] = ta.SMA(inputs, timeperiod = n)
-        inputs["adx_"+str(n)] = ta.ADX(inputs, timeperiod = n)
-        inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACD(inputs, n, n*2, n*2/3)
-        inputs["mfi_"+str(n)] = ta.MFI(inputs, n)
-        inputs["ult_"+str(n)] = ta.ULTOSC(inputs, n, n*2, n*4)
-        inputs["willr_"+str(n)] = ta.WILLR(inputs, n)
-        inputs["slowk"], inputs["slowd"] = ta.STOCH(inputs)
-        inputs["mom_"+str(n)] = ta.MOM(inputs, n)
+        ''' INDICATORS '''
+        print("Building indicators...")
+        inputs = sec_df.to_dict(orient="list")
+        for col in inputs:
+            inputs[col] = np.array(inputs[col])
 
-    df = df.from_dict(inputs)
+        for n in range(2, 40):
+            print(n)
+            inputs["bband_u_"+str(n)], inputs["bband_m_"+str(n)], inputs["bband_l_"+str(n)] = ta.BBANDS(inputs, n)
+            inputs["sma_"+str(n)] = ta.SMA(inputs, timeperiod = n)
+            inputs["adx_"+str(n)] = ta.ADX(inputs, timeperiod = n)
+            inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACD(inputs, n, n*2, n*2/3)
+            inputs["mfi_"+str(n)] = ta.MFI(inputs, n)
+            inputs["ult_"+str(n)] = ta.ULTOSC(inputs, n, n*2, n*4)
+            inputs["willr_"+str(n)] = ta.WILLR(inputs, n)
+            inputs["slowk"], inputs["slowd"] = ta.STOCH(inputs)
+            inputs["mom_"+str(n)] = ta.MOM(inputs, n)
+        df = pd.concat([df, pd.DataFrame().from_dict(inputs)])
+        Y = pd.concat([Y, sec_Y])
+        print(sec_df.head(20))
 
-    ''' BUILD NEURAL NET INPUTS ''' # Cut 20 for all the indicators to catch up
+    ''' BUILD NEURAL NET INPUTS ''' # Cut beginning for all the indicators to catch up
+    with pd.option_context('mode.use_inf_as_null', True):
+        for idx, val in df.isnull().any(axis=1).iteritems():
+            if val == True:
+                df.drop(idx, inplace = True)
+                Y.drop(idx, inplace = True)
+
     print("Normalizing inputs...")
-    trY = np.vstack(trY.values)[80:]
-    trX = df.values[80:]
+    Y = np.vstack(Y.values)[80:]
+    X = df.values[80:]
     price = price[80:]
 
-    trX = prep.normalize(prep.scale(trX))   # ain't I so clever
-    trX, testX, trY, testY, price, __ = train_test_split(trX, trY, price, test_size = 0.3, random_state=0)
+    X_norm = prep.normalize(prep.scale(X))   # ain't I so clever
+    trX, testX, trY, testY= train_test_split(X_norm, Y, test_size = 0.3, random_state=0)
     print("Pickling...")
-    pickle.dump({"trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": price}, open(SECURITY[5:] + "_data.pickle", "wb"))
+    pickle.dump({"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": price}, open(PICKLE_NAME[5:] + "_data.pickle", "wb"))
 
 else:
     print("Pickle found, loading...")
-    _data = pickle.load(open(SECURITY[5:] + "_data.pickle", "rb"))
-    trX, trY, testX, testY, price = _data["trX"], _data["trY"], _data["testX"], _data["testY"], _data["price"]
+    _data = pickle.load(open(PICKLE_NAME + "_data.pickle", "rb"))
+    trX, trY, testX, testY, price, X_norm, Y = _data["trX"], _data["trY"], _data["testX"], _data["testY"], _data["price"], _data["X_norm"], _data["Y"]
 
 # ### RANDOM INPUTS
 # trX = np.random.uniform(low=0.0, high=400.0, size=(9049,5))
@@ -110,64 +127,12 @@ else:
 # ### END RANDOM INPUTS
 
 
-layer_sizes = [len(trX[0]), 1000, 1000, 1000, 1000, 1000, 3]   # the 3 is technically not a layer (it's the output), but it's here for convenience
+layer_sizes = [len(trX[0]), 1000, 1000, 1000, 1000, 1000, 1000, 3]   # the 3 is technically not a layer (it's the output), but it's here for convenience
 
 x = tf.placeholder("float", [None, layer_sizes[0]])
 y = tf.placeholder("float")
 # test_x = tf.placeholder("float", [None, layer_sizes[0]])
 # test_y = tf.placeholder("float")
-
-def py_func(func, inp, Tout, stateful=True, name=None, grad=None):  #I've no idea what this is
-    rnd_name = 'PyFuncGrad' + str(np.random.randint(0, 1E+8))
-    tf.RegisterGradient(rnd_name)(grad)
-    g = tf.get_default_graph()
-    with g.gradient_override_map({"PyFunc": rnd_name}):
-        return tf.py_func(func, inp, Tout, stateful=stateful, name=name)
-
-def trade_cost_func(x, name=None):
-    with ops.name_scope(name, "TradeCost", [x]) as name:
-        cost = py_func(cost_function,
-                        [x],
-                        [tf.float32],
-                        name=name,
-                        grad=cost_grad)
-        return cost[0]
-
-def cost_grad(op, grad):
-    return tf.reshape(tf.convert_to_tensor([0.0, 0.0, 0.0]), (1, 3))
-
-def cost_function(predicted):
-    cash = TEST_CASH
-    shares = 0
-    flag = 0
-    print("test0")
-    print(predicted.get_shape())
-    for day_price, bar in zip(price, tf.unpack(predicted, 0)):
-        print("test1")
-        if bar == [0, 0, 1]:    #buy
-            if flag == 0:       #no position
-                print("buy")
-                shares = cash / day_price
-                cash -= shares * day_price 
-                flag = 1
-
-            elif flag == -1:    #short
-                cash += shares * day_price
-                shares = 0
-                flag = 0
-
-        elif bar == [1, 0, 0]:    #sell
-            if flag == 0:       # no position
-                shares = cash / day_price
-                cash -= shares * day_price 
-                flag = -1
-
-            elif flag == 1:    # long
-                cash += shares * day_price
-                shares = 0
-                flag = 0
-    print("return")
-    return tf.to_float(1/cash)
 
 def neural_network_model(data):
     layers = []
@@ -185,27 +150,63 @@ def neural_network_model(data):
                 if i != len(layer_sizes) - 2:    # Apply sigmoid if it's not the last layer
                     layers[i]["output"] = tf.nn.sigmoid(layers[i]["output"])
 
-    return tf.one_hot(tf.argmax(layers[-1]["output"], 1), depth = 3, axis = -1)
+    return layers[-1]["output"]
 
-def train_neural_network(x):
-    print("Training...")
-    prediction = neural_network_model(x)
-    cost = trade_cost_func(prediction)
-    optimizer = tf.train.AdamOptimizer().minimize(cost)
-    
-    hm_epochs = 20
-    with tf.Session() as sess:
-        sess.run(tf.initialize_all_variables())
+def test_trading():
+    TEST_CASH = 10000
+    shares = 0
+    flag = 0
+    print(tf.argmax(prediction, 1).eval({x:X_norm[:500], y:Y[:500]}, session = sess))
+    # print(price[:30])
+    for day_price, bar in zip(price, tf.argmax(prediction, 1).eval({x:X_norm[:500], y:Y[:500]}, session = sess)):
+        if bar == 2:    #buy
+            # print("buy")
+            if flag == 0:       #no position
+                shares = TEST_CASH / day_price
+                TEST_CASH -= shares * day_price 
+                flag = 1
 
-        for epoch in range(hm_epochs):
-            _, c = sess.run([optimizer, cost], feed_dict={x: trX, y: trY})  #sets session placeholders to actual values
+            # elif flag == -1:    #short
+            #     TEST_CASH += shares * day_price
+            #     shares = 0
+            #     flag = 0
 
-            print("Epoch", epoch, "completed out of", hm_epochs, "loss:", c)
+        elif bar == 0:    #sell
+            # print("sell")
+            # if flag == 0:       # no position
+            #     shares = TEST_CASH / day_price
+            #     TEST_CASH -= shares * day_price 
+            #     flag = -1
 
-            correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
-            # print(sess.run(prediction, feed_dict={x: trX, y: trY}))   #debug, to see outputs of prediction
+            # elif flag == 1:    # long
+            TEST_CASH += shares * day_price
+            shares = 0
+            flag = 0
 
-            accuracy = tf.reduce_mean(tf.cast(correct, "float"))
-            print("Accuracy:",accuracy.eval({x:testX, y:testY}))
+    TEST_CASH += shares * day_price
+    print(TEST_CASH)
 
-train_neural_network(x)
+
+sess = tf.Session()
+# def train_neural_network(x):
+print("Training...")
+prediction = neural_network_model(x)
+cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(prediction,y))
+optimizer = tf.train.AdamOptimizer().minimize(cost)
+
+hm_epochs = 50
+# with tf.Session() as sess:
+sess.run(tf.initialize_all_variables())
+
+for epoch in range(hm_epochs):
+    _, c = sess.run([optimizer, cost], feed_dict={x: trX, y: trY})  #sets session placeholders to actual values
+
+    print("Epoch", epoch, "completed out of", hm_epochs, "loss:", c)
+
+    correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
+    test_trading()
+    # print(sess.run(prediction, feed_dict={x: trX, y: trY}))   #debug, to see outputs of prediction
+
+    accuracy = tf.reduce_mean(tf.cast(correct, "float"))
+    print("Accuracy:",accuracy.eval({x:testX, y:testY}, session = sess))
+sess.close()
