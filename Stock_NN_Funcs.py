@@ -64,13 +64,11 @@ def build_data(secs):
 				sec_Y.set_value(idx, np.array([0, 1, 0], np.int32))
 
 			sec_df.reset_index(drop=True, inplace = True)
-			for idx, val in sec_df.isnull().any(axis=1).iteritems():
-				if val == True:
-					sec_df.drop(idx, inplace = True)
-					sec_Y.drop(idx, inplace = True)
-					price.pop(idx)
+			if isinstance(price, np.ndarray):
+				price = price.tolist()
 
 			''' INDICATORS '''
+			# print(len(sec_df), len(sec_Y))
 			print("Building indicators...")
 			inputs = sec_df.to_dict(orient="list")
 			for col in inputs:
@@ -88,36 +86,31 @@ def build_data(secs):
 				inputs["mom_"+str(n)] = ta.MOM(inputs, n)
 				inputs["mom_"+str(n)] = ta.MOM(inputs, n)
 
-
 			inputs["volume"] = list(map(lambda x: x/10000, inputs["volume"]))
-			prices.append(price.tolist())
-			df = pd.concat([df, pd.DataFrame().from_dict(inputs)])
-			Y = pd.concat([Y, sec_Y])
-			# print(sec_df.head(20))
-		# df = pd.concat([df, Y], axis = 1)
 
-		# new_df = pd.DataFrame
-		# for _, chunk in df.groupby(np.arange(len(df.index))/1000):
-		# 	with pd.option_context('mode.use_inf_as_null', True):
-		# 		print("Removing invalid values...")
+			sec_df = pd.DataFrame().from_dict(inputs)
+			# print(sec_df.isnull().any(axis=1))
+			for idx, val in sec_df.isnull().any(axis=1).iteritems():
+				if val == True:
+					# print(idx, val)
+					sec_df.drop(idx, inplace = True)
+					sec_Y.drop(idx, inplace = True)
+					price.pop(idx)
+
+			prices.append(price)
+
+
+			df = pd.concat([df, sec_df])
+			Y = pd.concat([Y, sec_Y])
 
 		prices = [j for i in prices for j in i]	# spooky magic
-
-		for idx, val in df.isnull().any(axis=1).iteritems():
-			if val == True:
-				df.drop(idx, inplace = True)
-				Y.drop(idx, inplace = True)
-				prices.pop(idx)
-
-		# Y = new_df["Y"]
 
 		''' BUILD NEURAL NET INPUTS ''' # Cut beginning for all the indicators to catch up
 		Y = np.vstack(Y.values)
 		X = df.values
-		prices = prices
 
 		print("Normalizing inputs...")
-		X_norm = prep.normalize(X)   # ain't I so clever
+		X_norm = prep.normalize(prep.scale(X))   # ain't I so clever
 		trX, testX, trY, testY= train_test_split(X_norm, Y, test_size = 0.3, random_state=0)
 		print("Pickling...")
 		output = {"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": prices}

@@ -6,7 +6,8 @@ from Stock_NN_Funcs import build_data
 
 TEST_CASH = 10000
 
-PICKLE_NAME = "F_AAPL_XOM_AMD_GOOGL_TMUS_AKAM_AMZN_T_BAC_ABT_ARNC_HON_GIS_MMM"
+PICKLE_NAME = "_".join(s[5:] for s in sys.argv[1:])
+
 sess = tf.Session()
 new_saver = tf.train.import_meta_graph("./" + PICKLE_NAME + ".ckpt.meta")
 new_saver.restore(sess, "./" + PICKLE_NAME + ".ckpt")
