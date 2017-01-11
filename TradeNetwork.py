@@ -2,11 +2,12 @@ import tensorflow as tf
 import numpy as np
 import dill as pickle
 from Stock_NN_Funcs import build_data
-
+import sys
 
 TEST_CASH = 10000
 
-PICKLE_NAME = "_".join(s[5:] for s in sys.argv[1:])
+# PICKLE_NAME = "_".join(s[5:] for s in sys.argv[1:])
+PICKLE_NAME = "_".join(sys.argv[1:])
 
 sess = tf.Session()
 new_saver = tf.train.import_meta_graph("./" + PICKLE_NAME + ".ckpt.meta")
@@ -42,7 +43,6 @@ def neural_network_model(data):
 			if i != num_layers - 1:    # Apply sigmoid if it's not the last layer
 				layers[i]["output"] = tf.nn.sigmoid(layers[i]["output"])
 
-	print("Length: ", len(layers))
 	return layers[-1]["output"]
 
 _data = build_data(["WIKI/BBBY"])
@@ -56,18 +56,17 @@ prediction = neural_network_model(x)
 
 best = 0
 chunk = 1
+final_cash = 0
 
 for prices, data in zip([price[i:i+252] for i in range(0, len(price), 252)], [X_norm[i:i+252] for i in range(0, len(X_norm), 252)]):
-	chunk+=1
 	CASH = TEST_CASH
 	MARGIN_CASH = 10000
 	shares = 0
 	flag = 0
 	short_price = 0
 	output = tf.argmax(prediction, 1).eval({x:data}, session = sess)
-	print(output)
+	# print(output)
 	# print(price[:30])
-	print("Batch length: ", len(prices), len(output))
 
 	for day_price, bar in zip(prices, output):
 		if bar == 2:    #buy
@@ -95,12 +94,23 @@ for prices, data in zip([price[i:i+252] for i in range(0, len(price), 252)], [X_
 				flag = 0
 
 	CASH += shares * day_price
+	final_cash += CASH
 	if CASH > best:
 		global best 
 		best = CASH
 		# saver.save(sess, "./"+PICKLE_NAME+".ckpt")
 
 	print("Year ", chunk, " returned $", CASH, " from an investment of $", TEST_CASH)
+	chunk+=1
+
+print("-------------------------------------------------")
+print("|  Initial investment:", TEST_CASH, "\t\t\t|")
+print("|  Best year result:", best, "\t\t|")
+print("|  Average annual result:", (final_cash - TEST_CASH)/chunk, "\t|")
+print("|  Annualized return percent:", int(((final_cash / TEST_CASH) * 100)/chunk), "\t\t|")
+print("-------------------------------------------------")
+
+
 
 sess.close()
 
