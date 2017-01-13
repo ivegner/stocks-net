@@ -19,7 +19,7 @@ def build_data(secs):
 	PICKLE_NAME = "_".join(s[5:] for s in secs)
 	print("SECURITIES: ", PICKLE_NAME.split("_"))
 
-	if not os.path.isfile(PICKLE_NAME + "_data.pickle"):
+	if not os.path.isfile("./stock_data/" + PICKLE_NAME + "_data.pickle"):
 		print("No pickle found, getting data...")
 		# df = pd.concat([quandl.get("WIKI/AAPL"), quandl.get("WIKI/F"), quandl.get("WIKI/XOM")])
 		df = pd.DataFrame()
@@ -105,20 +105,23 @@ def build_data(secs):
 
 		prices = [j for i in prices for j in i]	# spooky magic
 
-		''' BUILD NEURAL NET INPUTS ''' # Cut beginning for all the indicators to catch up
+		''' BUILD NEURAL NET INPUTS '''
 		Y = np.vstack(Y.values)
 		X = df.values
 
 		print("Normalizing inputs...")
-		X_norm = prep.normalize(prep.scale(X))   # ain't I so clever
+		X_norm = prep.normalize(X)
 		trX, testX, trY, testY= train_test_split(X_norm, Y, test_size = 0.3, random_state=0)
 		print("Pickling...")
 		output = {"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": prices}
-		pickle.dump(output, open(PICKLE_NAME + "_data.pickle", "wb"))
+		pickle.dump(output, open("./stock_data/" + PICKLE_NAME + "_data.pickle", "wb"))
 		return output
 
 	else:
 		print("Pickle found, loading...")
-		_data = pickle.load(open(PICKLE_NAME + "_data.pickle", "rb"))
+		_data = pickle.load(open("./stock_data/" + PICKLE_NAME + "_data.pickle", "rb"))
 		trX, trY, testX, testY, price, X_norm, Y = _data["trX"], _data["trY"], _data["testX"], _data["testY"], _data["price"], _data["X_norm"], _data["Y"]
 		return {"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": price}
+
+
+		

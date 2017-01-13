@@ -7,7 +7,7 @@ import sys
 import dill as pickle
 from sklearn import preprocessing as prep
 
-np.set_printoptions(precision = 6)
+np.set_printoptions(precision = 3)
 quandl.ApiConfig.api_key = "KDH1TFmmmcrjgynvRdWg"
 
 '''  CONSTANTS '''

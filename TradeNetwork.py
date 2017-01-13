@@ -4,6 +4,8 @@ import dill as pickle
 from Stock_NN_Funcs import build_data
 import sys
 
+np.set_printoptions(precision = 3)
+
 TEST_CASH = 10000
 
 # PICKLE_NAME = "_".join(s[5:] for s in sys.argv[1:])
@@ -45,7 +47,8 @@ def neural_network_model(data):
 
 	return layers[-1]["output"]
 
-_data = build_data(["WIKI/BBBY"])
+# _data = build_data(["WIKI/F", "WIKI/TSLA", "WIKI/BBBY"])
+_data = build_data(["WIKI/M"])
 price, X_norm= _data["price"], _data["X_norm"]
 print("Total lengths: ", len(price), len(X_norm))
 
@@ -72,11 +75,13 @@ for prices, data in zip([price[i:i+252] for i in range(0, len(price), 252)], [X_
 		if bar == 2:    #buy
 			# # print("buy")
 			if flag == 0:       #no position
+				# print("Long")
 				shares = CASH / day_price
 				CASH -= shares * day_price 
 				flag = 1
 
 			if flag == -1:    #short
+				# print("Closing short")
 				CASH += shares * (short_price - day_price)
 				shares = 0
 				flag = 0
@@ -84,16 +89,21 @@ for prices, data in zip([price[i:i+252] for i in range(0, len(price), 252)], [X_
 		elif bar == 0:    #sell
 			# print("sell")
 			if flag == 0:       # no position
+				# print("Short")
 				shares = MARGIN_CASH / day_price
 				short_price = day_price
 				flag = -1
 
-			elif flag == 1:    # long
+			if flag == 1:    # long
+				# print("Closing long")
 				CASH += shares * day_price
 				shares = 0
 				flag = 0
 
-	CASH += shares * day_price
+	if flag == -1:
+		CASH += shares * (short_price - day_price)
+	elif flag == 1:
+		CASH += shares * day_price
 	final_cash += CASH
 	if CASH > best:
 		global best 
@@ -107,7 +117,7 @@ print("-------------------------------------------------")
 print("|  Initial investment:", TEST_CASH, "\t\t\t|")
 print("|  Best year result:", best, "\t\t|")
 print("|  Average annual result:", (final_cash - TEST_CASH)/chunk, "\t|")
-print("|  Annualized return percent:", int(((final_cash / TEST_CASH) * 100)/chunk), "\t\t|")
+print("|  Annualized return percent:", int(((final_cash / TEST_CASH) * 100)/chunk)-100, "\t\t|")
 print("-------------------------------------------------")
 
 
