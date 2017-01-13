@@ -47,8 +47,8 @@ def neural_network_model(data):
 
 	return layers[-1]["output"]
 
-# _data = build_data(["WIKI/F", "WIKI/TSLA", "WIKI/BBBY"])
-_data = build_data(["WIKI/M"])
+_data = build_data(["WIKI/F", "WIKI/TSLA", "WIKI/BBBY"])
+# _data = build_data(["WIKI/M"])
 price, X_norm= _data["price"], _data["X_norm"]
 print("Total lengths: ", len(price), len(X_norm))
 
