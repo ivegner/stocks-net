@@ -2,7 +2,7 @@ import numpy as np
 import sys
 import tensorflow as tf
 from deap import base, creator, tools
-from Stock_NN_Funcs import build_data
+from Stock_NN_Funcs import build_data_to_dict as build_data
 import random
 # from mem_top import mem_top
 import parmap
@@ -100,12 +100,12 @@ def mutate(individual, prob=0.5):
 		for j in range(len(individual[0][i])):
 			for k in range(len(individual[0][i][j])):
 				if random.random() < prob:
-					individual[0][i][j][k] += random.gauss(0.0, 0.2)
+					individual[0][i][j][k] += random.gauss(0.0, 0.7)
 
 	for i in range(len(individual[1])):
 		for j in range(len(individual[1][i])):
 			if random.random() < prob:
-				individual[1][i][j] += random.gauss(0.0, 0.2)
+				individual[1][i][j] += random.gauss(0.0, 0.7)
 	del individual.fitness.values
 
 def mate(ind1, ind2):
@@ -126,7 +126,7 @@ test_data = build_data(TEST_SEC)
 prices, test_X = test_data["price"], test_data["X_norm"]
 
 # layer_sizes = [2, 5, 3]
-layer_sizes = [len(test_X[0]), 1000, 1000, 1000, 1000, 1000, 1000, 3]   # the 3 is technically not a layer (it's the output), but it's here for convenience
+layer_sizes = [len(test_X[0]), 1000, 1000, 1000, 1000, 1000, 3]   # the 3 is technically not a layer (it's the output), but it's here for convenience
 x = tf.placeholder("float", [None, layer_sizes[0]])
 y = tf.placeholder("float")
 
@@ -160,18 +160,11 @@ logbook.header = "gen", "avg", "std", "min", "max"
 
 print("And now we gon' evolve.")
 for g in range(N_GEN):
-	# print("Generation", g, "started training...")
+	print("Generation", g, "started training...")
 	# print(mem_top())
-
-	# num_parents = N_BEST + N_RANDOM
-	# # Determine number of children based on total population and number of parents per generation
-	# # total_num = num_parents + num_children * num_families -> N_IND = num_parents + num_children * num_parents/2 ->
-	# # -> num_children = (N_IND - num_parents) / (num_parents/2) = 2(N_IND - num_parents) / num_parents
-	# num_children = 2 * (N_IND - num_parents) / num_parents
 
 	# # Select the next generation individuals
 	# # print("Selecting individuals...")
-	# parents = toolbox.selectBest(pop) + toolbox.selectRandom(pop)
 	next_gen = toolbox.select(pop)
 
 	# Clone the selected individuals (they're references before this) and shuffle
@@ -213,7 +206,7 @@ for g in range(N_GEN):
 		best_ind = toolbox.clone(best_ind)
 		net = neural_network_model(best_ind[0][0], best_ind[0][1], x)
 		sess.run(tf.global_variables_initializer())
-		tf.train.Saver().save(sess, "./evolutionary.ckpt")
+		tf.train.Saver().save(sess, "./evolutionary_" + g)
 
 
 # Plotting!

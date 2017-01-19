@@ -12,8 +12,8 @@ TEST_CASH = 10000
 PICKLE_NAME = "_".join(sys.argv[1:])
 
 sess = tf.Session()
-new_saver = tf.train.import_meta_graph("./" + PICKLE_NAME + ".ckpt.meta")
-new_saver.restore(sess, "./" + PICKLE_NAME + ".ckpt")
+new_saver = tf.train.import_meta_graph("./" + PICKLE_NAME + ".meta")
+new_saver.restore(sess, "./" + PICKLE_NAME)
 # all_vars = tf.trainable_variables()
 # for v in all_vars:
 #     print(v.name)
@@ -26,7 +26,6 @@ def neural_network_model(data):
 	for idx, var in enumerate(tf.trainable_variables()):
 		if (idx % 2): continue		#if it's an odd-numbered var, i.e. a bias
 		i = int(var.name[-3])
-		print(i)
 		layers.append({"weights": var,
 					   "biases": tf.trainable_variables()[idx+1]})
 
@@ -40,78 +39,79 @@ def neural_network_model(data):
 			layers[0]["output"] = tf.nn.sigmoid(layers[0]["output"])
 		else:
 			layers[i]["output"] = tf.add(tf.matmul(layers[i-1]["output"], layers[i]["weights"]), layers[i]["biases"])
-			print("I: ", i)
 
 			if i != num_layers - 1:    # Apply sigmoid if it's not the last layer
 				layers[i]["output"] = tf.nn.sigmoid(layers[i]["output"])
 
 	return layers[-1]["output"]
 
-_data = build_data(["WIKI/F", "WIKI/TSLA", "WIKI/BBBY"])
-# _data = build_data(["WIKI/M"])
-price, X_norm= _data["price"], _data["X_norm"]
-print("Total lengths: ", len(price), len(X_norm))
-
-x = tf.placeholder("float", [None, len(X_norm[0])])
-y = tf.placeholder("float")
-
-prediction = neural_network_model(x)
+builder = build_data()
+builder.send(None)
 
 best = 0
 chunk = 1
 final_cash = 0
+for s in ["WIKI/F", "WIKI/TSLA", "WIKI/BBBY"]:
+	_data = builder.send(s)
+	price = _data["price"]
+	X_norm = _data["X_norm"]
 
-for prices, data in zip([price[i:i+252] for i in range(0, len(price), 252)], [X_norm[i:i+252] for i in range(0, len(X_norm), 252)]):
-	CASH = TEST_CASH
-	MARGIN_CASH = 10000
-	shares = 0
-	flag = 0
-	short_price = 0
-	output = tf.argmax(prediction, 1).eval({x:data}, session = sess)
-	# print(output)
-	# print(price[:30])
+	x = tf.placeholder("float", [None, len(X_norm[0])])
+	y = tf.placeholder("float")
 
-	for day_price, bar in zip(prices, output):
-		if bar == 2:    #buy
-			# # print("buy")
-			if flag == 0:       #no position
-				# print("Long")
-				shares = CASH / day_price
-				CASH -= shares * day_price 
-				flag = 1
+	prediction = neural_network_model(x)
 
-			if flag == -1:    #short
-				# print("Closing short")
-				CASH += shares * (short_price - day_price)
-				shares = 0
-				flag = 0
+	for prices, data in zip([price[i:i+252] for i in range(0, len(price), 252)], [X_norm[i:i+252] for i in range(0, len(X_norm), 252)]):
+		CASH = TEST_CASH
+		MARGIN_CASH = 10000
+		shares = 0
+		flag = 0
+		short_price = 0
+		output = tf.argmax(prediction, 1).eval({x:data}, session = sess)
+		# print(output)
+		# print(price[:30])
 
-		elif bar == 0:    #sell
-			# print("sell")
-			if flag == 0:       # no position
-				# print("Short")
-				shares = MARGIN_CASH / day_price
-				short_price = day_price
-				flag = -1
+		for day_price, bar in zip(prices, output):
+			if bar == 2:    #buy
+				# # print("buy")
+				if flag == 0:       #no position
+					# print("Long")
+					shares = CASH / day_price
+					CASH -= shares * day_price 
+					flag = 1
 
-			if flag == 1:    # long
-				# print("Closing long")
-				CASH += shares * day_price
-				shares = 0
-				flag = 0
+				if flag == -1:    #short
+					# print("Closing short")
+					CASH += shares * (short_price - day_price)
+					shares = 0
+					flag = 0
 
-	if flag == -1:
-		CASH += shares * (short_price - day_price)
-	elif flag == 1:
-		CASH += shares * day_price
-	final_cash += CASH
-	if CASH > best:
-		global best 
-		best = CASH
-		# saver.save(sess, "./"+PICKLE_NAME+".ckpt")
+			elif bar == 0:    #sell
+				# print("sell")
+				if flag == 0:       # no position
+					# print("Short")
+					shares = MARGIN_CASH / day_price
+					short_price = day_price
+					flag = -1
 
-	print("Year ", chunk, " returned $", CASH, " from an investment of $", TEST_CASH)
-	chunk+=1
+				if flag == 1:    # long
+					# print("Closing long")
+					CASH += shares * day_price
+					shares = 0
+					flag = 0
+
+		if flag == -1:
+			CASH += shares * (short_price - day_price)
+		elif flag == 1:
+			CASH += shares * day_price
+		final_cash += CASH
+		if CASH > best:
+			global best 
+			best = CASH
+			# saver.save(sess, "./"+PICKLE_NAME+".ckpt")
+
+		print("Year ", chunk, " returned $", CASH, " from an investment of $", TEST_CASH)
+		chunk+=1
 
 print("-------------------------------------------------")
 print("|  Initial investment:", TEST_CASH, "\t\t\t|")
