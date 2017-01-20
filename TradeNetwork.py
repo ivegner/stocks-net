@@ -82,7 +82,7 @@ for s in ["WIKI/F", "WIKI/TSLA", "WIKI/BBBY"]:
 
 				if flag == -1:    #short
 					# print("Closing short")
-					CASH += shares * (short_price - day_price)
+					CASH -= shares * day_price
 					shares = 0
 					flag = 0
 
@@ -91,7 +91,7 @@ for s in ["WIKI/F", "WIKI/TSLA", "WIKI/BBBY"]:
 				if flag == 0:       # no position
 					# print("Short")
 					shares = MARGIN_CASH / day_price
-					short_price = day_price
+					CASH += shares * day_price
 					flag = -1
 
 				if flag == 1:    # long
@@ -101,7 +101,7 @@ for s in ["WIKI/F", "WIKI/TSLA", "WIKI/BBBY"]:
 					flag = 0
 
 		if flag == -1:
-			CASH += shares * (short_price - day_price)
+			CASH -= shares * day_price
 		elif flag == 1:
 			CASH += shares * day_price
 		final_cash += CASH
@@ -110,13 +110,13 @@ for s in ["WIKI/F", "WIKI/TSLA", "WIKI/BBBY"]:
 			best = CASH
 			# saver.save(sess, "./"+PICKLE_NAME+".ckpt")
 
-		print("Year ", chunk, " returned $", CASH, " from an investment of $", TEST_CASH)
+		print("Year ", chunk, " returned $", int(CASH), " from an investment of $", TEST_CASH)
 		chunk+=1
 
 print("-------------------------------------------------")
 print("|  Initial investment:", TEST_CASH, "\t\t\t|")
-print("|  Best year result:", best, "\t\t|")
-print("|  Average annual result:", (final_cash - TEST_CASH)/chunk, "\t|")
+print("|  Best year result:", int(best), "\t\t\t|")
+print("|  Average annual result:", int((final_cash - TEST_CASH)/chunk), "\t\t\t|")
 print("|  Annualized return percent:", int(((final_cash / TEST_CASH) * 100)/chunk)-100, "\t\t|")
 print("-------------------------------------------------")
 

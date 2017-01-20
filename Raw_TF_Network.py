@@ -12,6 +12,7 @@ np.set_printoptions(precision = 3)
 '''  CONSTANTS '''
 
 TEST_CASH = 10000.0
+load_model_arg = sys.argv[1] == "-l"
 # NUM_GENS = int(sys.argv[2])
 
 ''''''''''''''''''
@@ -118,44 +119,77 @@ def test_trading():
 
 print("Training...")
 
-sess = tf.Session()
-
 builder = build_data()
 builder.send(None)
 one_input_length = len(builder.send("WIKI/AAPL")["trX"][0])
-layer_sizes = [one_input_length, 3000, 3000, 3000, 3]   # the 3 is technically not a layer (it's the output), but it's here for convenience
+layer_sizes = [one_input_length, 1000, 1000, 3]   # the 3 is technically not a layer (it's the output), but it's here for convenience
 
-x = tf.placeholder("float", [None, one_input_length])
-y = tf.placeholder("float")
+if not load_model_arg:
+	x = tf.placeholder("float", [None, one_input_length])
+	y = tf.placeholder("float")
+	prediction = neural_network_model(x)
+	cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(prediction,y))
+	optimizer = tf.train.AdamOptimizer().minimize(cost)
 
-# IF MODEL NEEDS TO BE LOADED -- WILL BE REWORKED LATER #
-# saver = tf.train.import_meta_graph("./massive_240.meta")
-# saver.restore(sess, "./massive_240")
-# prediction = neural_network_model_loaded(x)
-########################################################
+	saver = tf.train.Saver()
 
-# IF MODEL NEEDS TO BE MADE FROM SCRATCH #
+	tf.add_to_collection('train_op', optimizer)
+	tf.add_to_collection('cost_op', cost)
+	tf.add_to_collection('input', x)
+	tf.add_to_collection('target', y)
 
-prediction = neural_network_model(x)
-saver = tf.train.Saver()
-#######################################################
+	initial_epoch = 0
 
+else:
+	from glob import glob
+	history = list(map(lambda x: int(x.split('-')[1][:-5]), glob('trained_model.ckpt-*.meta')))
+	last_epoch = np.max(history)
+	# Instantiate saver object using previously saved meta-graph
+	saver = tf.train.import_meta_graph('trained_model.ckpt-{}.meta'.format(last_epoch))
+	initial_epoch = last_epoch + 1
 
-cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(prediction,y))
-optimizer = tf.train.AdamOptimizer().minimize(cost)
+# if sys.argv[1] == "-l": # IF MODEL NEEDS TO BE LOADED 
+# 	saver = tf.train.import_meta_graph("./massive_69.meta")
+# 	saver.restore(sess, "./massive_69")
+# 	prediction = neural_network_model_loaded(x)
+# 	temp = set(tf.global_variables())
 
-hm_epochs = 500
+# elif sys.argv[1] == "-n":	# IF MODEL NEEDS TO BE MADE FROM SCRATCH
+# 	prediction = neural_network_model(x)
+# 	saver = tf.train.Saver()
+# 	temp = set([])
 
+# cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(prediction,y))
+# optimizer = tf.train.AdamOptimizer().minimize(cost)
+
+n_epochs = 500
 
 test_data = builder.send("WIKI/BBBY")
 test_price, test_X_norm= test_data["price"], test_data["X_norm"]
 
-sess.run(tf.global_variables_initializer())
+#I honestly don't know how else to initialize ADAM in TensorFlow.
+# uninitialized_variables = list(tf.get_variable(name) for name in
+# 							   sess.run(tf.report_uninitialized_variables(tf.global_variables() + tf.local_variables())))
+# sess.run(tf.variables_initializer(uninitialized_variables))
 
-for epoch in range(hm_epochs):
+sess = tf.Session()
+
+if not load_model_arg:
+	sess.run(tf.global_variables_initializer())
+else:
+    saver.restore(sess, 'model.ckpt')
+    optimizer = tf.get_collection('train_op')[0]
+    cost = tf.get_collection('cost_op')[0]
+    x = tf.get_collection('input')[0]
+    y = tf.get_collection('target')[0]
+    prediction = neural_network_model_loaded(x)
+
+test_trading()
+
+for epoch in range(n_epochs):
 	c = 0
 
-	for sec in Bar("Processing", suffix = "%(percent)d%%").iter(sys.argv[1:]):	#built-in progress bar that also iterates
+	for sec in Bar("Processing", suffix = "%(percent)d%%").iter(sys.argv[2:]):	#built-in progress bar that also iterates
 		# print("Now training on", sec)
 		_data = builder.send(sec)
 		if _data is None:
@@ -165,7 +199,7 @@ for epoch in range(hm_epochs):
 		_, loss = sess.run([optimizer, cost], feed_dict={x: trX, y: trY})  #sets session placeholders to actual values
 		c += loss
 
-	print("Epoch", epoch, "completed out of", hm_epochs, "loss:", c)
+	print("Epoch", epoch, "completed out of", n_epochs, "loss:", c)
 	# if c < 0.0001: break
 
 	correct = tf.equal(tf.argmax(prediction, 1), tf.argmax(y, 1))
@@ -176,7 +210,7 @@ for epoch in range(hm_epochs):
 	print("Accuracy:",accuracy.eval({x:testX, y:testY}, session = sess))
 
 	if epoch % 3 == 0:
-		saver.save(sess, "./massive_"+str(epoch))
+		saver.save(sess, 'trained_model.ckpt', global_step=epoch, keep_max = 30)
 
 print("BEST RESULT: $", best, " from an initial investment of $", TEST_CASH)
 sess.close()
