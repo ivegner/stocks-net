@@ -21,7 +21,9 @@ new_saver.restore(sess, "./" + PICKLE_NAME)
 
 
 def neural_network_model(data):
-	num_layers = tf.trainable_variables()[-1][-3] + 1	#last layer number postscript + 1. Based on the naming structure of TF vars
+	vars = [n.name for n in tf.trainable_variables()]
+
+	num_layers = int(vars[-1][-3]) + 1	#last layer number postscript + 1. Based on the naming structure of TF vars
 	layers = []
 	for idx, var in enumerate(tf.trainable_variables()):
 		if (idx % 2): continue		#if it's an odd-numbered var, i.e. a bias

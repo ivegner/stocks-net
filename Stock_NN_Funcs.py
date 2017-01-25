@@ -14,7 +14,7 @@ quandl.ApiConfig.api_key = "KDH1TFmmmcrjgynvRdWg"
 HI_LO_DIFF = 0.03
 MIN_MAX_PERIOD = 8
 
-def build_data():
+def build_data(raw = False):
 	# if len(sec) == 1 and os.path.isfile(secs[0]):	#it's a file
 	# 	with open(secs[0]) as f:
 	# 		secs = ["WIKI/" + line.strip() for line in f]
@@ -67,24 +67,41 @@ def build_data():
 			Y = pd.Series(name="signal", dtype=np.ndarray, index=range(0, len(price)))
 			n=0
 			for _, idx in np.ndenumerate(minIdxs):
-				if idx < MIN_MAX_PERIOD: continue
+				# if idx < MIN_MAX_PERIOD: continue
 				max_price = max(price[idx: idx + MIN_MAX_PERIOD])
-				if ((max_price - price[idx]) / price[idx]) > HI_LO_DIFF:    #if the difference between max and min is > 2%
-					Y.set_value(idx, np.array([1, 0, 0], np.int32))
+				if ((max_price - price[idx]) / price[idx]) > HI_LO_DIFF:    #if the difference between max and min is > X%
+					Y.set_value(idx, np.array([1., 0.], np.float32))
 					n+=1
 
 			# print("MINS:", n)
 			n=0
 			for _, idx in np.ndenumerate(maxIdxs):
-				if idx < MIN_MAX_PERIOD: continue
+				# if idx < MIN_MAX_PERIOD: continue
 				min_price = min(price[idx: idx + MIN_MAX_PERIOD])
-				if ((price[idx] - min_price)/ min_price) > HI_LO_DIFF:  #if the difference between max and min is > 2%
-					Y.set_value(idx, np.array([0, 0, 1], np.int32))
+				if ((price[idx] - min_price)/ min_price) > HI_LO_DIFF:  #if the difference between max and min is > X%
+					Y.set_value(idx, np.array([0., 1.], np.float32))
 					n+=1
-			# print("MAXS:", n)
 
-			for idx in pd.isnull(Y).nonzero()[0]:
-				Y.set_value(idx, np.array([0, 1, 0], np.int32))
+			# print("MAXS:", n)
+			_min_idx, _max_idx = 0, 0
+			for i, y in np.ndenumerate(Y.values):
+				if np.array_equal(y, [1., 0.]):
+					_min_idx = i[0]
+				elif np.array_equal(y, [0., 1.]):
+					_max_idx = i[0]
+				else:
+					if _min_idx > _max_idx:
+						s =  np.array([1., 0.])
+					elif _max_idx > _min_idx:
+						s =  np.array([0., 1.])
+					else:
+						s = np.array([0., 0.]) 	# no action taken, only occurs at the beginnings of datasets, afaik
+
+					Y.set_value(i, s, np.float32)
+
+			# x = list(zip(price[0:50], Y.values[0:50]))
+			# for i in x:
+			# 	print("{0:.2f} -- {1}".format(i[0], "sell" if np.array_equal(i[1], [0, 1]) else "buy" if np.array_equal(i[1], [1, 0]) else "nothing"))
 
 			df.reset_index(drop=True, inplace = True)
 			if isinstance(price, np.ndarray):
@@ -126,15 +143,21 @@ def build_data():
 
 			''' BUILD NEURAL NET INPUTS '''
 			if not broken:
-				Y = np.vstack(Y.values)
-				X = df.values
+				Y = np.vstack(Y.values)[20:]
+				X = df.values[20:]
 
-				# print("Normalizing inputs...")
-				X_norm = prep.normalize(X)
+				if not raw:
+					scaler = prep.StandardScaler().fit(X)
+					X_norm = scaler.transform(X)
+					from sklearn.externals import joblib
+					joblib.dump(scaler, "./stock_data/" + sec + ".scaler") 
+				else:
+					X_norm = X
+
 				trX, testX, trY, testY= train_test_split(X_norm, Y, test_size = 0.1, random_state=0)
 				# print("Pickling...")
 				output = {"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": price}
-				pickle.dump(output, open("./stock_data/" + sec + "_data.pickle", "wb"))
+				pickle.dump(output, open("./stock_data/" + (sec if not raw else sec + "_raw") + "_data.pickle", "wb"))
 				stock_code = yield output
 			else:
 				invalid_stock_codes += [stock_code]
@@ -144,13 +167,13 @@ def build_data():
 
 		else:
 			# print("Pickle found, loading...")
-			_data = pickle.load(open("./stock_data/" + sec + "_data.pickle", "rb"))
+			_data = pickle.load(open("./stock_data/" + (sec if not raw else sec + "_raw") + "_data.pickle", "rb"))
 			trX, trY, testX, testY, price, X_norm, Y = _data["trX"], _data["trY"], _data["testX"], _data["testY"], _data["price"], _data["X_norm"], _data["Y"]
 			stock_code = yield {"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": price}
 
 
 
-def build_data_to_dict(secs):
+def build_data_to_dict(secs, raw = False):
 
 	PICKLE_NAME = "_".join(s[5:] for s in secs)
 	print("SECURITIES: ", PICKLE_NAME.split("_"))
@@ -245,12 +268,18 @@ def build_data_to_dict(secs):
 		Y = np.vstack(Y.values)
 		X = df.values
 
-		print("Normalizing inputs...")
-		X_norm = prep.normalize(X)
-		trX, testX, trY, testY= train_test_split(X_norm, Y, test_size = 0.3, random_state=0)
-		print("Pickling...")
-		output = {"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": prices}
-		pickle.dump(output, open("./stock_data/" + PICKLE_NAME + "_data.pickle", "wb"))
+		if not raw:
+			scaler = prep.StandardScaler().fit(X)
+			X_norm = scaler.transform(X)
+			from sklearn.externals import joblib
+			joblib.dump(scaler, "./stock_data/" + sec + ".scaler") 
+		else:
+			X_norm = X
+
+		trX, testX, trY, testY= train_test_split(X_norm, Y, test_size = 0.1, random_state=0)
+		# print("Pickling...")
+		output = {"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": price}
+		pickle.dump(output, open("./stock_data/" + (PICKLE_NAME if not raw else PICKLE_NAME + "_raw") + "_data.pickle", "wb"))
 		return output
 
 	else:
