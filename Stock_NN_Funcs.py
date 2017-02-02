@@ -1,4 +1,3 @@
-import tensorflow as tf
 import quandl
 import pandas as pd
 import numpy as np
@@ -14,7 +13,7 @@ quandl.ApiConfig.api_key = "KDH1TFmmmcrjgynvRdWg"
 HI_LO_DIFF = 0.03
 MIN_MAX_PERIOD = 8
 
-def build_data(raw = False):
+def build_data(raw = False, random_split = True):
 	# if len(sec) == 1 and os.path.isfile(secs[0]):	#it's a file
 	# 	with open(secs[0]) as f:
 	# 		secs = ["WIKI/" + line.strip() for line in f]
@@ -41,7 +40,13 @@ def build_data(raw = False):
 
 		sec = stock_code.split("/")[1]	# Just the ticker, not the database code
 
-		if not os.path.isfile("./stock_data/" + sec + "_data.pickle"):
+		pickle_name = sec
+		if raw:
+			pickle_name += "_raw"
+		if not random_split:
+			pickle_name += "_notrand"
+
+		if not os.path.isfile("./stock_data/" + pickle_name + "_data.pickle"):
 			# print("No pickle found, getting data for", sec)
 			try:
 				# print("Getting data for", stock_code)
@@ -145,20 +150,33 @@ def build_data(raw = False):
 			if not broken:
 				Y = np.vstack(Y.values)[20:]
 				X = df.values[20:]
+				price = price[20:]
 
 				if not raw:
 					scaler = prep.StandardScaler().fit(X)
 					X_norm = scaler.transform(X)
 					from sklearn.externals import joblib
 					joblib.dump(scaler, "./stock_data/" + sec + ".scaler") 
+
 				else:
 					X_norm = X
 
-				trX, testX, trY, testY= train_test_split(X_norm, Y, test_size = 0.1, random_state=0)
+				test_proportion = 0.1
+
+				if random_split:
+					trX, testX, trY, testY = train_test_split(X_norm, Y, test_size = test_proportion, random_state=0)
+
+				else: 		# just clips the test data off the end
+					l = len(X_norm)
+					trX, testX = X_norm[:int(-test_proportion*l)], X_norm[int(-test_proportion*l):]	
+					trY, testY = Y[:int(-test_proportion*l)], Y[int(-test_proportion*l):]
+
 				# print("Pickling...")
+
 				output = {"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": price}
-				pickle.dump(output, open("./stock_data/" + (sec if not raw else sec + "_raw") + "_data.pickle", "wb"))
+				pickle.dump(output, open("./stock_data/" + pickle_name + "_data.pickle", "wb"))
 				stock_code = yield output
+
 			else:
 				invalid_stock_codes += [stock_code]
 				f.write(stock_code + "\n")
@@ -167,7 +185,8 @@ def build_data(raw = False):
 
 		else:
 			# print("Pickle found, loading...")
-			_data = pickle.load(open("./stock_data/" + (sec if not raw else sec + "_raw") + "_data.pickle", "rb"))
+
+			_data = pickle.load(open("./stock_data/" + pickle_name + "_data.pickle", "rb"))
 			trX, trY, testX, testY, price, X_norm, Y = _data["trX"], _data["trY"], _data["testX"], _data["testY"], _data["price"], _data["X_norm"], _data["Y"]
 			stock_code = yield {"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": price}
 

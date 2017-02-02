@@ -2,7 +2,7 @@ import numpy as np
 import sys
 import tensorflow as tf
 from deap import base, creator, tools
-from Stock_NN_Funcs import build_data_to_dict as build_data
+# from Stock_NN_Funcs import build_data_to_dict as build_data 	#STOP BEING LAZY
 import random
 # from mem_top import mem_top
 # import parmap
@@ -143,7 +143,7 @@ if __name__ == "__main__":
 	prices, test_X = test_data["price"], test_data["X_norm"]
 
 	# layer_sizes = [2, 5, 3]
-	layer_sizes = [len(test_X[0]), 1000, 1000, 1000, 1000, 1000, 3]   # the 3 is technically not a layer (it's the output), but it's here for convenience
+	layer_sizes = [len(test_X[0]), 1000, 1000, 1000, 1000, 1000, 2]   # the 3 is technically not a layer (it's the output), but it's here for convenience
 	x = tf.placeholder("float", [None, layer_sizes[0]])
 	y = tf.placeholder("float")
 
