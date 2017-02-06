@@ -1,7 +1,7 @@
 import sys
 import numpy as np
 from keras.models import Sequential, Model
-from keras.layers import TimeDistributed, Dense, GRU, Convolution1D, MaxPooling1D
+from keras.layers import TimeDistributed, Dense, GRU, Convolution1D, MaxPooling1D, Lambda
 from keras.regularizers import l2, l1
 from keras.callbacks import Callback, ModelCheckpoint
 from Stock_NN_Funcs import build_data
@@ -46,32 +46,37 @@ test_Y = np.reshape(aapl["testY"], (1,) + np.shape(aapl["testY"]))
 
 if not load_model_arg:
 	model = Sequential()
-	model.add(Convolution1D(64, 5, input_dim = one_input_length, border_mode = "same", W_regularizer = l2(0.01)))
-	model.add(MaxPooling1D(10, border_mode = "same"))
-	model.add(Convolution1D(64, 5, border_mode = "same", W_regularizer = l2(0.01)))
-	model.add(MaxPooling1D(10, border_mode = "same"))
+	print(np.shape(test_X))
+	model.add(Lambda(lambda x: K.expand_dims(x, -1), input_shape = (None, one_input_length)))
+	model.add(TimeDistributed(Convolution1D(1, 5, border_mode = "same", W_regularizer = l2(0.01))))
+	model.add(TimeDistributed(MaxPooling1D(3, border_mode = "same")))
+	model.add(TimeDistributed(Convolution1D(1, 5, border_mode = "same", W_regularizer = l2(0.01))))
+	model.add(TimeDistributed(MaxPooling1D(3, border_mode = "same")))
+	model.add(Lambda(lambda x: K.squeeze(x, -1)))
 	model.add(GRU(300, return_sequences = True, W_regularizer = l2(0.01), U_regularizer = l2(0.01)))
+	model.add(TimeDistributed(Dense(2, activation='sigmoid')))
 	# model.add(GRU(300, return_sequences = True, W_regularizer = l2(0.01), U_regularizer = l2(0.01)))
 
-	model.add(TimeDistributed(Dense(2, activation='sigmoid')))
-	print(np.shape(test_X))
+	lambda_1_layer = Model(input=model.input,
+						   output=model.get_layer("lambda_1").output)
+	print(np.shape(lambda_1_layer.predict(test_X)))
 	first_layer_model = Model(input=model.input,
-							  output=model.get_layer("convolution1d_1").output)
+							  output=model.get_layer("timedistributed_1").output)
 	print(np.shape(first_layer_model.predict(test_X)))
 	second_layer_model = Model(input=model.input,
-							   output=model.get_layer("maxpooling1d_1").output)
+							   output=model.get_layer("timedistributed_2").output)
 	print(np.shape(second_layer_model.predict(test_X)))
 	layer3_model = Model(input=model.input,
-						 output=model.get_layer("convolution1d_2").output)
+						 output=model.get_layer("timedistributed_3").output)
 	print(np.shape(layer3_model.predict(test_X)))
 	layer4_model = Model(input=model.input,
-						 output=model.get_layer("maxpooling1d_2").output)
+						 output=model.get_layer("timedistributed_4").output)
 	print(np.shape(layer4_model.predict(test_X)))
 	layer5_model = Model(input=model.input,
-						 output=model.get_layer("gru_1").output)
+						 output=model.get_layer("lambda_2").output)
 	print(np.shape(layer5_model.predict(test_X)))
 	layer6_model = Model(input=model.input,
-						 output=model.get_layer("timedistributed_1").output)
+						 output=model.get_layer("gru_1").output)
 	print(np.shape(layer6_model.predict(test_X)))
 
 
