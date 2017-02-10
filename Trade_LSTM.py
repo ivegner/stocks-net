@@ -7,17 +7,17 @@ from keras.utils.layer_utils import layer_from_config
 import math
 import matplotlib.pyplot as plt
 
-TEST_CASH = 100
+TEST_CASH = 1000
 model_name = sys.argv[1]
-test_secs = ["WIKI/CZR"]
+test_secs = ["WIKI/AAPL", "WIKI/XOM", "WIKI/F"]
 trading_days_in_year = 252
 
 
-# _build_data = build_data(random_split = False, start_date = "1999-01-01", end_date = "2017-01-01")
-_build_data = build_data(random_split = False, start_date = "2014-01-01", end_date = "2016-01-01")
+_build_data = build_data(random_split = False, start_date = "2007-01-01", end_date = "2017-01-01")
+# _build_data = build_data(random_split = False, start_date = "2014-01-01", end_date = "2016-01-01")
 _build_data.send(None)
-# aapl = _build_data.send("WIKI/AAPL")
-one_input_length = 463 #len(aapl["trX"][0])
+aapl = _build_data.send("WIKI/AAPL")
+one_input_length = len(aapl["trX"][0])
 
 # def keras_builder(builder):
 # 	# s = yield
@@ -83,7 +83,6 @@ for model_idx in range(len(all_models)):
 all_models = [Sequential(layers) for layers in all_layers]
 for model_idx in range(len(all_models)):
 	all_models[model_idx].set_weights(all_weights[model_idx])
-	# print(all_models[model_idx].summary())
 
 total_period = len(days)
 
@@ -112,6 +111,7 @@ for year in [days[i:i+trading_days_in_year] for i in range(0, total_period, trad
 			price = round(sec[1], 2)
 			# print(x)
 			prediction = np.argmax(all_models[i].predict(x, batch_size = 1)[0][0])
+			# print("Day:", day, "Prediction:", prediction)
 
 			if prediction == 0:	# buy
 				if bought_flag == 0:       #no position
@@ -156,8 +156,6 @@ for year in [days[i:i+trading_days_in_year] for i in range(0, total_period, trad
 	print("Return:", round(cash, 2))
 	print("Total cash:", round(total_cash, 2))
 
-plt.show()
-
 print("-------------------------------------------------")
 print("|  Initial investment:", TEST_CASH, "\t\t\t|")
 # print("|  Best year result:", int(best), "\t\t\t|")
@@ -165,6 +163,8 @@ print("|  Average annual result:", int(total_cash/year_count), "\t\t|")
 print("|  Annualized return percent:", int(((total_cash / TEST_CASH) * 100)/year_count)-100, "\t\t|")
 print("|  Buys:", buys, " / Sells:", sells, "\t\t\t|")
 print("-------------------------------------------------")
+
+plt.show()
 
 # import sys
 # from Stock_NN_Funcs import build_data

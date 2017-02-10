@@ -7,15 +7,21 @@ from keras.utils.layer_utils import layer_from_config
 import math
 import matplotlib.pyplot as plt
 
-cash = 100
+np.random.seed(1337) # for reproducibility
+
+TEST_CASH = 100
+
+cash = TEST_CASH
 model_name = sys.argv[1]
-test_secs = ["WIKI/CZR"]
+test_secs = ["WIKI/AAPL", "WIKI/XOM", "WIKI/F"]
 trading_days_in_year = 252
 
-builder = build_realtime_data(test_secs, start_date = "2014-01-01", end_date = "2016-01-01")
+builder = build_realtime_data(test_secs, start_date = "2014-01-01", end_date = "2016-01-01", backload = 200)
 
-backload_data = builder.send(None)
-one_input_length = len(backload_data[0][0])
+backload_data = builder.send(None)	# OrderedDict [(date, [{data: data1, price:price1}, {data: data2, price:price2}]), (date2, ...)]
+backload_data = list(backload_data.items())
+one_input_length = len(backload_data[0][1][0]["data"])	# dat indexing tho
+print(one_input_length)
 
 _, plots = plt.subplots(len(test_secs), sharex=True, squeeze = False)
 plt.xlabel("Time")
@@ -55,24 +61,31 @@ continue_trading = True
 
 prices = [[-999] * len(test_secs)]
 
-for i, backload_sec in enumerate(backload_data):
-	print("Pretraining model", i)
-	for backload_day in backload_sec:
-		backload_day = np.reshape(backload_day, (1, 1,) + np.shape(backload_day))
-		# print(all_models[i].predict(backload_day, batch_size = 1))
+# print("Pretraining...")
+# for _, data in backload_data:
+# 	# data is an array of dicts, with each containing "data" and "price" for one security
+# 	for i, security in enumerate(data):
+# 		security = np.reshape(security["data"], (1, 1,) + np.shape(security["data"]))
+# 		all_models[i].predict(security, batch_size = 1)
 
 day_count = 0
-while(1):
+while(continue_trading):
 	try:
-		data = next(builder)
+		day = next(builder)
+		# day = backload_data[0:4][day_count]
+		# day is a tuple (date, array), where array is an array of {"data":data, "price":price} for each security
 	except StopIteration:
 		break
-	for i, sec in enumerate(data):	# for each security given
-		print(sec["date"])
+
+	date, data = day
+
+	for i, sec in enumerate(data):
+		# sec is {"data":data, "price":price}
+
 		x = np.reshape(sec["data"], (1, 1,) + np.shape(sec["data"]))
-		price = round(sec["price"], 2)
+		price = sec["price"]
 		prediction = np.argmax(all_models[i].predict(x, batch_size = 1)[0][0])
-		print("Prediction:", prediction)
+		print("Prediction:", prediction, "price", price, "date", date)
 
 		if prices[i][0] == -999:
 			prices[i][0] = price
@@ -108,10 +121,20 @@ while(1):
 					# plots[i, 0].axvline(x=day_count, color="r")
 					plots[i, 0].plot(day_count, price + 0.2, marker = "v", color = "r", ms = 5)
 
+		# print(sec["data"][0:4])
+
 	day_count += 1
 
 for i in range(len(test_secs)):
-	plots[i, 0].plot(range(day_count), prices[i])
+	plots[i, 0].plot(range(day_count), prices[i], linewidth = 3)
+
+print("-------------------------------------------------")
+print("|  Initial investment:", TEST_CASH, "\t\t\t|")
+# print("|  Best year result:", int(best), "\t\t\t|")
+print("|  Average annual result:", round((cash - TEST_CASH)/(day_count/trading_days_in_year)), "\t\t|")
+print("|  Annualized return percent:", round(((cash / TEST_CASH) * 100)/(day_count/trading_days_in_year))-100, "\t\t|")
+print("|  Buys:", buys, " / Sells:", sells, "\t\t\t|")
+print("-------------------------------------------------")
 
 plt.show()
 

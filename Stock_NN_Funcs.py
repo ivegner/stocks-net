@@ -1,14 +1,17 @@
-import quandl
+import quandl, sys, os
 import pandas as pd
 import numpy as np
 from scipy.signal import argrelextrema
-import sys, os
 import dill as pickle
 from sklearn import preprocessing as prep
 from sklearn.model_selection import train_test_split
 from talib import abstract as ta
 from sklearn.externals import joblib
-import copy
+from collections import OrderedDict
+import time
+
+np.random.seed(1337) # for reproducibility
+
 
 quandl.ApiConfig.api_key = "KDH1TFmmmcrjgynvRdWg"
 
@@ -133,7 +136,7 @@ def build_data(raw = False, random_split = True, start_date = None, end_date = N
 				inputs["bband_u_"+str(n)], inputs["bband_m_"+str(n)], inputs["bband_l_"+str(n)] = ta.BBANDS(inputs, n)
 				inputs["sma_"+str(n)] = ta.SMA(inputs, timeperiod = n)
 				inputs["adx_"+str(n)] = ta.ADX(inputs, timeperiod = n)
-				inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACD(inputs, n, n*2, n*2/3)
+				inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACDEXT(inputs, fastperiod = n, slowperiod = n*2, signalperiod=n*2/3)
 				inputs["mfi_"+str(n)] = ta.MFI(inputs, n)
 				inputs["ult_"+str(n)] = ta.ULTOSC(inputs, n, n*2, n*4)
 				inputs["willr_"+str(n)] = ta.WILLR(inputs, n)
@@ -173,7 +176,7 @@ def build_data(raw = False, random_split = True, start_date = None, end_date = N
 			''' BUILD NEURAL NET INPUTS '''
 			if not broken:
 				Y = np.vstack(Y.values)
-				print(df["adx_10"])
+				# print(df["adx_10"])
 				X = df.values
 				# print(X[0:2])
 
@@ -232,263 +235,236 @@ def build_realtime_data(stock_codes, start_date = None, end_date = None, backloa
 
 	testing_mode = True if start_date else False
 
-	# Setup LSTM memory	
-	raw_price_data_backload = [quandl.get(stock, end_date = start_date, limit = backload) for stock in stock_codes]
-	# print(raw_price_data_backload)
-	historical_backload = _build_indicators(raw_price_data_backload)
-	# print(type(historical_backload), type(historical_backload[0]))
-	backloaded_data = [historical_backload[i]["data"] for i in range(len(stock_codes))]
+	builder = _build_indicators(len(stock_codes))
+	builder.send(None)
+
+	# Setup LSTM memory	(:-1 because the last entry would be the current day)
+	# raw_price_data_backload is a list of DataFrames
+	raw_price_data_backload = [quandl.get(stock, end_date = start_date, limit = backload)[:-1] for stock in stock_codes]
+
+	historical_backload = OrderedDict()
+
+	for day_idx in raw_price_data_backload[0].index.values:
+		day = []
+		for sec_idx in range(len(stock_codes)):
+			day += [raw_price_data_backload[sec_idx].loc[day_idx]]
+
+		day_data = builder.send(day)
+		incomplete_data = False
+		for datum in day_data[0]["data"]:
+			if np.isnan(datum):
+				incomplete_data = True
+				break
+
+		if not incomplete_data:		# only add those that don't have NaN's
+			historical_backload[day_idx] = day_data
+
+	''' historical_backload == [
+								[date, {"data": stock1_day1_data, "price": stock1_day1_price}, {...stock2 day 1...}], 
+								[date, {"data": stock1_day2_data, "price": stock1_day2_price}, {...stock2 day 2...}],
+								...
+							   ]
+	'''
+
 
 	# for i in range(len(stock_codes)):
 	# 	print(backloaded_data[i])
 	# 	assert len(backloaded_data[i]) == len(raw_price_data_backload[i])
 
 	# scalers = {stock_code: prep.StandardScaler().fit(backloaded_data[0]) for stock_code in stock_codes}
-	scalers = {stock_code: None for stock_code in stock_codes}
 
-	for i, stock_code in enumerate(stock_codes):
+	scalers = [None for stock_code in stock_codes]
 
-		sec = stock_code.split("/")[1]	# Just the ticker, not the database code
+	for day_idx, day in historical_backload.items():
+		for i, stock_code in enumerate(stock_codes):
 
-		if not scalers[stock_code]:
-			if not os.path.isfile("./stock_data/" + sec + "_notrand.scaler"):
-				print("No scaler for", sec)
-				sys.exit(1)
+			sec = stock_code.split("/")[1]	# Just the ticker, not the database code
+
+			if not scalers[i]:
+				if not os.path.isfile("./stock_data/" + sec + "_notrand.scaler"):
+					print("No scaler for", sec)
+					sys.exit(1)
+				else:
+					scaler = joblib.load("./stock_data/" + sec + "_notrand.scaler")
+					scalers[i] = scaler
 			else:
-				scaler = joblib.load("./stock_data/" + sec + "_notrand.scaler")
-				scalers[stock_code] = scaler
-		else:
-			scaler = scalers[stock_code]
+				scaler = scalers[i]
 
-		backloaded_data[i] = scaler.transform(backloaded_data[i])
+			# print("Before", historical_backload[day_idx][i]["data"][0])
+			# print(np.isnan(historical_backload[day_idx][i]["data"]).any())
+			historical_backload[day_idx][i]["data"] = scaler.transform([historical_backload[day_idx][i]["data"]])[0]
+			# print("After", historical_backload[day_idx][i]["data"][0])
 
-	yield backloaded_data	# this is yielded when None is sent to the generator, i.e. on the first run
+
+	yield historical_backload	# this is yielded when None is sent to the generator, i.e. on the first run
+
+	''' historical_backload == [
+								[date, [{"data": stock1_day1_data, "price": stock1_day1_price}, {...stock2 day 1...}]], 
+								[date, [{"data": stock1_day2_data, "price": stock1_day2_price}, {...stock2 day 2...}]],
+								...
+							   ]
+	'''
+
 
 	if testing_mode:	# pre-load a bunch of historical data to simulate real-time trades
-		historical_price_data = [quandl.get(stock, start_date = start_date, end_date = end_date) for stock in stock_codes]
-		dates = historical_price_data[0].index.values
+		raw_historical_prices = [quandl.get(stock, start_date = start_date, end_date = end_date) for stock in stock_codes]
+		historical_price_data = OrderedDict()
 
-	sliding_window = [raw_price_data_backload[i][-160:] for i in range(len(stock_codes))]
-	print("WINDOW:", sliding_window)
+		for day_idx in raw_historical_prices[0].index.values:
+			day = []
+			for sec_idx in range(len(stock_codes)):
+				day += [raw_historical_prices[sec_idx].loc[day_idx]]
+			historical_price_data[day_idx] = day
+
+		historical_price_data = list(historical_price_data.items())
+
 	day_counter = 0
 	# Hand out data one-by-one
+
+	print("LENGTH OF HISTORICAL", len(historical_price_data))
 	while True:
-		print("test0")
 		if not testing_mode:	# if no pre-built prices, i.e. actually realtime
 			raw_price_data = [quandl.get(stock, limit = 1) for stock in stock_codes]	# just the last entry
+			day_data = []
+			for sec_idx in range(len(stock_codes)):
+				day_data += [raw_price_data[sec_idx]]
+
 			date = raw_price_data[0].index.values[0]
 		else:
-			print("i:", i, "day_counter", day_counter, "length", len(historical_price_data[i]))
 			try:
-				raw_price_data = [historical_price_data[i].iloc[day_counter] for i in range(len(stock_codes))]
+				day_data = historical_price_data[day_counter][1]
 			except IndexError:
 				break
-			date = dates[day_counter]
+			date = historical_price_data[day_counter][0]
 
-		print("test1")
+		# print("Trading day #{}".format(day_counter), "date:", date)
 
-		merged_window = [sliding_window[i].append(raw_price_data[i], ignore_index = True) for i in range(len(stock_codes))]
-		data_with_ind = _build_indicators(merged_window)	
-		# [{"data": data_for_stock1, "price": prices_for_stock_1}, {"data": data_for_stock2, "price": prices_for_stock_2},...]
+		day_data = builder.send(day_data)
 
-		current_day_data = [{"data": data_with_ind[i]["data"][-1], "price": data_with_ind[i]["price"][-1], "date": date} for i in range(len(stock_codes))]
 
-		sliding_window = copy.deepcopy(merged_window)
-		print("test2")
-		sliding_window = [sliding_window[i].drop(sliding_window[i].index[0]) for i in range(len(stock_codes))]
-		print("test3")
+		for i in range(len(stock_codes)):
+			# print(np.isnan(day_data[i]["data"]).any())
+			day_data[i]["data"] = scalers[i].transform([day_data[i]["data"]])[0]
+
 		day_counter += 1
 
-		yield current_day_data
+		yield (date, day_data)
 
-def _build_indicators(data):
+def _build_indicators(num_secs):	# accepts a list of one-day Series
 
-	# sliding_window = []
+	sec_idx_range = range(num_secs)
+	sliding_window = []	# list of pd.DataFrames
 
+	data = yield
+
+	for datum in data:
+		sliding_window += [_rename_columns(datum)]
+
+	current_day = 0
 	while True:
-		data_with_ind = []
+		from talib import abstract as ta
+		passes_validity_check, num_validation_iterations = False, 0
+		# time.sleep(1)
+		while not passes_validity_check:
+			for i in sec_idx_range:	# for each security
+				# print("Current day:", current_day)
+				if current_day != 0:
+					if current_day > 170 and num_validation_iterations == 0:
+						sliding_window[i] = sliding_window[i].iloc[1:]	# pop the first
 
-		for df in data:
-			df = copy.deepcopy(df)
+					for datum in data:
+						if num_validation_iterations == 0:
+							sliding_window[i] = sliding_window[i].append(_rename_columns(datum))
 
-			if "Adj. Close" in df.columns:
-				df = df[["Adj. Open",  "Adj. High",  "Adj. Low",  "Adj. Close", "Adj. Volume"]]
-				df.rename(columns=lambda x: x[5:].lower(), inplace=True)    # Remove the "Adj. " and make lowercase
-			elif "Close" in df.columns:
-				df = df[["Open",  "High",  "Low",  "Close", "Volume"]]
-				df.rename(columns=lambda x: x.lower(), inplace=True)    # make lowercase
+				data_with_ind = []
 
-			df.reset_index(drop=True, inplace = True)
+				series = sliding_window[i]
+				series = series.reset_index(drop=True)
 
-			inputs = df.to_dict(orient="list")
-			for col in inputs:
-				inputs[col] = np.array(inputs[col])
-
-			for n in range(2, 40):
-				inputs["bband_u_"+str(n)], inputs["bband_m_"+str(n)], inputs["bband_l_"+str(n)] = ta.BBANDS(inputs, n)
-				inputs["sma_"+str(n)] = ta.SMA(inputs, timeperiod = n)
-				inputs["adx_"+str(n)] = ta.ADX(inputs, timeperiod = n)
-				inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACD(inputs, n, n*2, n*2/3)
-				inputs["mfi_"+str(n)] = ta.MFI(inputs, n)
-				inputs["ult_"+str(n)] = ta.ULTOSC(inputs, n, n*2, n*4)
-				inputs["willr_"+str(n)] = ta.WILLR(inputs, n)
-				inputs["slowk"], inputs["slowd"] = ta.STOCH(inputs)
-				inputs["mom_"+str(n)] = ta.MOM(inputs, n)
-				inputs["mom_"+str(n)] = ta.MOM(inputs, n)
-
-			inputs["volume"] = list(map(lambda x: x/10000, inputs["volume"]))
-
-			df = pd.DataFrame().from_dict(inputs)
-
-			price = df["close"].values
-			if isinstance(price, np.ndarray):
-				price = price.tolist()
+				inputs = series.to_dict(orient="list")
+				for col in inputs:
+					inputs[col] = np.array(inputs[col])
 
 
-			for idx, val in df.isnull().any(axis=1).iteritems():
-				if val == True:
-					df.drop(idx, inplace = True)
-					try:
-						price[idx] = None
-					except IndexError:	#drop the security
-						print("Error, failed to drop price on index", idx)
-						sys.exit(1)
-					# print("Dropped index:", idx)
+				for n in range(2, 40):
+					inputs["bband_u_"+str(n)], inputs["bband_m_"+str(n)], inputs["bband_l_"+str(n)] = ta.BBANDS(inputs, n)
+					inputs["sma_"+str(n)] = ta.SMA(inputs, timeperiod = n)
+					inputs["adx_"+str(n)] = ta.ADX(inputs, timeperiod = n)
+					# print("\nINPUTS:", inputs)
+					if current_day == 2:	# workaround for a bug in ta-lib which I am incapable of solving
+						inputs["macd_"+str(2)], inputs["macdsignal_"+str(2)], inputs["macdhist_"+str(2)] = [np.array([np.nan]*3)] * 3
+					else:
+						inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACD(inputs, n, n*2, n*2/3)
+					inputs["mfi_"+str(n)] = ta.MFI(inputs, n)
+					inputs["ult_"+str(n)] = ta.ULTOSC(inputs, n, n*2, n*4)
+					inputs["willr_"+str(n)] = ta.WILLR(inputs, n)
+					inputs["slowk"], inputs["slowd"] = ta.STOCH(inputs)
+					inputs["mom_"+str(n)] = ta.MOM(inputs, n)
+					inputs["mom_"+str(n)] = ta.MOM(inputs, n)
 
-			for i, p in reversed(list(enumerate(price))):
-				actual_idx = len(price) - 1 - i
-				if p == None:
-					price.pop(actual_idx)
+				inputs["volume"] = list(map(lambda x: x/10000, inputs["volume"]))
 
-			print(df["adx_10"])
-			X = df.values
+				print(len(inputs), len(inputs["close"]), len(inputs["macd_2"]))
+				series = pd.DataFrame().from_dict(inputs)
 
-
-			data_with_ind += [{"data": X, "price": price}]
-
-		return data_with_ind
-
-
-
-
+				price = series["close"].iloc[-1]
+				if isinstance(price, np.ndarray):
+					price = price.tolist()
 
 
-def build_data_to_dict(secs, raw = False):
+				# for idx, val in series.isnull().any(axis=1).iteritems():
+				# 	if val == True:
+						# series.drop(idx, inplace = True)
+						# try:
+						# 	price[idx] = None
+						# except IndexError:	#drop the security
+						# 	print("Error, failed to drop price on index", idx)
+						# 	sys.exit(1)
+						# # print("Dropped index:", idx)
 
-	PICKLE_NAME = "_".join(s[5:] for s in secs)
-	print("SECURITIES: ", PICKLE_NAME.split("_"))
+				# for i, p in reversed(list(enumerate(price))):
+				# 	actual_idx = len(price) - 1 - i
+				# 	if p == None:
+				# 		price.pop(actual_idx)
 
-	if not os.path.isfile("./stock_data/" + PICKLE_NAME + "_data.pickle"):
-		print("No pickle found, getting data...")
-		# df = pd.concat([quandl.get("WIKI/AAPL"), quandl.get("WIKI/F"), quandl.get("WIKI/XOM")])
-		df = pd.DataFrame()
-		Y = pd.Series()
-		prices = []
-		for sec in secs:
-			sec_df = quandl.get(sec)
+				# print(series["adx_10"])
+				X = series.iloc[-1].values
 
-			if "Adj. Close" in sec_df.columns:
-				sec_df = sec_df[["Adj. Open",  "Adj. High",  "Adj. Low",  "Adj. Close", "Adj. Volume"]]
-				sec_df.rename(columns=lambda x: x[5:].lower(), inplace=True)    # Remove the "Adj. " and make lowercase
-			elif "Close" in sec_df.columns:
-				sec_df = sec_df[["Open",  "High",  "Low",  "Close", "Volume"]]
-				sec_df.rename(columns=lambda x: x.lower(), inplace=True)    # make lowercase
+				if not np.isnan(X).any() or current_day < 170:
+					passes_validity_check = True
 
-			print("Calculating output for", sec)
-			price = sec_df['close'].values
-			minIdxs = argrelextrema(price, np.less)
-			maxIdxs = argrelextrema(price, np.greater)
+				else:
+					num_validation_iterations += 1
+					print("Reevaluating, iteration", num_validation_iterations)
 
+				# if np.isnan(X).any() and current_day > 170:
+				# 	# with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+				# 	# 	print(series)
+				# 	print(sliding_window[0])
+				# 	break
 
-			sec_Y = pd.Series(name="signal", dtype=np.ndarray, index=range(0, len(price)))
-			n=0
-			for _, idx in np.ndenumerate(minIdxs):
-				if idx < MIN_MAX_PERIOD: continue
-				max_price = max(price[idx: idx + MIN_MAX_PERIOD])
-				if ((max_price - price[idx]) / price[idx]) > HI_LO_DIFF:    #if the difference between max and min is > 2%
-					sec_Y.set_value(idx, np.array([1, 0, 0], np.int32))
-					n+=1
+				# print("ADX_10:\n", series["adx_10"].tail(3))
 
-			print("MINS:", n)
-			n=0
-			for _, idx in np.ndenumerate(maxIdxs):
-				if idx < MIN_MAX_PERIOD: continue
-				min_price = min(price[idx: idx + MIN_MAX_PERIOD])
-				if ((price[idx] - min_price)/ min_price) > HI_LO_DIFF:  #if the difference between max and min is > 2%
-					sec_Y.set_value(idx, np.array([0, 0, 1], np.int32))
-					n+=1
-			print("MAXS:", n)
+				# if current_day == 900:
+				# 	print(series)
+				# 	print(X)
 
-			for idx in pd.isnull(sec_Y).nonzero()[0]:
-				sec_Y.set_value(idx, np.array([0, 1, 0], np.int32))
+				data_with_ind += [{"data": X, "price": round(price, 2)}]
 
-			sec_df.reset_index(drop=True, inplace = True)
-			if isinstance(price, np.ndarray):
-				price = price.tolist()
-
-			''' INDICATORS '''
-			# print(len(sec_df), len(sec_Y))
-			print("Building indicators...")
-			inputs = sec_df.to_dict(orient="list")
-			for col in inputs:
-				inputs[col] = np.array(inputs[col])
-
-			for n in range(2, 40):
-				inputs["bband_u_"+str(n)], inputs["bband_m_"+str(n)], inputs["bband_l_"+str(n)] = ta.BBANDS(inputs, n)
-				inputs["sma_"+str(n)] = ta.SMA(inputs, timeperiod = n)
-				inputs["adx_"+str(n)] = ta.ADX(inputs, timeperiod = n)
-				inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACD(inputs, n, n*2, n*2/3)
-				inputs["mfi_"+str(n)] = ta.MFI(inputs, n)
-				inputs["ult_"+str(n)] = ta.ULTOSC(inputs, n, n*2, n*4)
-				inputs["willr_"+str(n)] = ta.WILLR(inputs, n)
-				inputs["slowk"], inputs["slowd"] = ta.STOCH(inputs)
-				inputs["mom_"+str(n)] = ta.MOM(inputs, n)
-				inputs["mom_"+str(n)] = ta.MOM(inputs, n)
-
-			inputs["volume"] = list(map(lambda x: x/10000, inputs["volume"]))
-
-			sec_df = pd.DataFrame().from_dict(inputs)
-			# print(sec_df.isnull().any(axis=1))
-			for idx, val in sec_df.isnull().any(axis=1).iteritems():
-				if val == True:
-					# print(idx, val)
-					sec_df.drop(idx, inplace = True)
-					sec_Y.drop(idx, inplace = True)
-					price.pop(idx)
-
-			prices.append(price)
+		data = yield data_with_ind
+		current_day += 1
 
 
-			df = pd.concat([df, sec_df])
-			Y = pd.concat([Y, sec_Y])
+def _rename_columns(df):
+	if isinstance(df, pd.core.series.Series):
+		df = pd.DataFrame([df], columns = df.index.values)
 
-		prices = [j for i in prices for j in i]	# spooky magic
+	if "Adj. Close" in df.columns:
+		df = df[["Adj. Open",  "Adj. High",  "Adj. Low",  "Adj. Close", "Adj. Volume"]]
+		df.rename(columns=lambda x: x[5:].lower(), inplace=True)    # Remove the "Adj. " and make lowercase
+	elif "Close" in df.columns:
+		df = df[["Open",  "High",  "Low",  "Close", "Volume"]]
+		df.rename(columns=lambda x: x.lower(), inplace=True)    # make lowercase
 
-		''' BUILD NEURAL NET INPUTS '''
-		Y = np.vstack(Y.values)
-		X = df.values
-
-
-		if not raw:
-			scaler = prep.StandardScaler().fit(X)
-			X_norm = scaler.transform(X)
-			from sklearn.externals import joblib
-			joblib.dump(scaler, "./stock_data/" + sec + ".scaler") 
-		else:
-			X_norm = X
-
-		trX, testX, trY, testY= train_test_split(X_norm, Y, test_size = 0.1, random_state=0)
-		# print("Pickling...")
-		output = {"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": price}
-		pickle.dump(output, open("./stock_data/" + (PICKLE_NAME if not raw else PICKLE_NAME + "_raw") + "_data.pickle", "wb"))
-		return output
-
-	else:
-		print("Pickle found, loading...")
-		_data = pickle.load(open("./stock_data/" + PICKLE_NAME + "_data.pickle", "rb"))
-		trX, trY, testX, testY, price, X_norm, Y = _data["trX"], _data["trY"], _data["testX"], _data["testY"], _data["price"], _data["X_norm"], _data["Y"]
-		return {"X_norm": X_norm, "Y": Y, "trX": trX, "trY": trY, "testX": testX, "testY": testY, "price": price}
-
-
-
+	return df
 		

@@ -57,29 +57,27 @@ if not load_model_arg:
 	model.add(TimeDistributed(Dense(2, activation='sigmoid')))
 	# model.add(GRU(300, return_sequences = True, W_regularizer = l2(0.01), U_regularizer = l2(0.01)))
 
-	lambda_1_layer = Model(input=model.input,
-						   output=model.get_layer("lambda_1").output)
-	print(np.shape(lambda_1_layer.predict(test_X)))
-	first_layer_model = Model(input=model.input,
-							  output=model.get_layer("timedistributed_1").output)
-	print(np.shape(first_layer_model.predict(test_X)))
-	second_layer_model = Model(input=model.input,
-							   output=model.get_layer("timedistributed_2").output)
-	print(np.shape(second_layer_model.predict(test_X)))
-	layer3_model = Model(input=model.input,
-						 output=model.get_layer("timedistributed_3").output)
-	print(np.shape(layer3_model.predict(test_X)))
-	layer4_model = Model(input=model.input,
-						 output=model.get_layer("timedistributed_4").output)
-	print(np.shape(layer4_model.predict(test_X)))
-	layer5_model = Model(input=model.input,
-						 output=model.get_layer("lambda_2").output)
-	print(np.shape(layer5_model.predict(test_X)))
-	layer6_model = Model(input=model.input,
-						 output=model.get_layer("gru_1").output)
-	print(np.shape(layer6_model.predict(test_X)))
-
-
+	# lambda_1_layer = Model(input=model.input,
+	# 					   output=model.get_layer("lambda_1").output)
+	# print(np.shape(lambda_1_layer.predict(test_X)))
+	# first_layer_model = Model(input=model.input,
+	# 						  output=model.get_layer("timedistributed_1").output)
+	# print(np.shape(first_layer_model.predict(test_X)))
+	# second_layer_model = Model(input=model.input,
+	# 						   output=model.get_layer("timedistributed_2").output)
+	# print(np.shape(second_layer_model.predict(test_X)))
+	# layer3_model = Model(input=model.input,
+	# 					 output=model.get_layer("timedistributed_3").output)
+	# print(np.shape(layer3_model.predict(test_X)))
+	# layer4_model = Model(input=model.input,
+	# 					 output=model.get_layer("timedistributed_4").output)
+	# print(np.shape(layer4_model.predict(test_X)))
+	# layer5_model = Model(input=model.input,
+	# 					 output=model.get_layer("lambda_2").output)
+	# print(np.shape(layer5_model.predict(test_X)))
+	# layer6_model = Model(input=model.input,
+	# 					 output=model.get_layer("gru_1").output)
+	# print(np.shape(layer6_model.predict(test_X)))
 
 	model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 	initial_epoch = 1
@@ -93,13 +91,13 @@ else:
 
 print(model.summary())
 
-test_X = np.reshape(aapl["testX"], (1,) + np.shape(aapl["testX"]))
-test_Y = np.reshape(aapl["testY"], (1,) + np.shape(aapl["testY"]))
+# test_X = np.reshape(aapl["testX"], (1,) + np.shape(aapl["testX"]))
+# test_Y = np.reshape(aapl["testY"], (1,) + np.shape(aapl["testY"]))
 
-# model.fit_generator(keras_builder(_build_data), samples_per_epoch = samples_per_epoch, nb_epoch=nb_epoch, 
-					# verbose = 2, callbacks=[TestCallback((test_X, test_Y)), ModelCheckpoint("cnn_lstm_model-{epoch:02d}.h5")], initial_epoch = initial_epoch)
+model.fit_generator(keras_builder(_build_data), samples_per_epoch = samples_per_epoch, nb_epoch=nb_epoch, 
+					verbose = 2, callbacks=[TestCallback((test_X, test_Y)), ModelCheckpoint("cnn_lstm_model-{epoch:02d}.h5")], initial_epoch = initial_epoch)
 
-model.fit(test_X, test_Y, nb_epoch=nb_epoch, verbose = 2, callbacks=[TestCallback((test_X, test_Y)), ModelCheckpoint("cnn_lstm_model-{epoch:02d}.h5")], initial_epoch = initial_epoch)
+# model.fit(test_X, test_Y, nb_epoch=nb_epoch, verbose = 2, callbacks=[TestCallback((test_X, test_Y)), ModelCheckpoint("cnn_lstm_model-{epoch:02d}.h5")], initial_epoch = initial_epoch)
 
 
 scores = model.evaluate(test_X, test_Y, verbose=2)
