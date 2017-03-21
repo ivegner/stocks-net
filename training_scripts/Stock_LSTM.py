@@ -1,7 +1,10 @@
-import sys
+import sys, os
+# I welcome all suggestions for how to do this better
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))	 
+
 import numpy as np
 from keras.models import Sequential
-from keras.layers import TimeDistributed, Dense, LSTM, GRU
+from keras.layers import TimeDistributed, Dense, GRU
 from keras.regularizers import l2, l1
 from keras.callbacks import Callback, ModelCheckpoint
 from Stock_NN_Funcs import build_data
@@ -42,9 +45,11 @@ class TestCallback(Callback):
 
 if not load_model_arg:
 	model = Sequential()
-	model.add(GRU(300, input_dim = one_input_length, return_sequences = True, W_regularizer = l2(0.01), U_regularizer = l2(0.01)))
-	model.add(GRU(300, return_sequences = True, W_regularizer = l2(0.01), U_regularizer = l2(0.01)))
-	model.add(GRU(300, return_sequences = True, W_regularizer = l2(0.01), U_regularizer = l2(0.01)))
+	model.add(GRU(500, input_dim = one_input_length, return_sequences = True, W_regularizer = l2(0.01), U_regularizer = l2(0.01)))
+	model.add(GRU(500, return_sequences = True, W_regularizer = l2(0.01), U_regularizer = l2(0.01)))
+	model.add(GRU(500, return_sequences = True, W_regularizer = l2(0.01), U_regularizer = l2(0.01)))
+	# model.add(GRU(500, return_sequences = True, W_regularizer = l2(0.01), U_regularizer = l2(0.01)))
+	# model.add(GRU(500, return_sequences = True, W_regularizer = l2(0.01), U_regularizer = l2(0.01)))
 	model.add(TimeDistributed(Dense(2, activation='sigmoid')))
 	model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 	initial_epoch = 1

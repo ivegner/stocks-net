@@ -1,9 +1,12 @@
 import tensorflow as tf
+import sys, os
+# I welcome all suggestions for how to do this better
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))	 
+
 from tensorflow.python.framework import ops
 import numpy as np
 import dill as pickle
 from Stock_NN_Funcs import build_data
-import sys
 import argparse
 from progress.bar import Bar
 

@@ -18,7 +18,8 @@ quandl.ApiConfig.api_key = "KDH1TFmmmcrjgynvRdWg"
 HI_LO_DIFF = 0.03
 MIN_MAX_PERIOD = 8
 
-def build_data(raw = False, random_split = True, start_date = None, end_date = None, test_proportion = 0.1):
+def build_data(raw = False, random_split = True, start_date = None,
+			   end_date = None, test_proportion = 0.1):
 	# if len(sec) == 1 and os.path.isfile(secs[0]):	#it's a file
 	# 	with open(secs[0]) as f:
 	# 		secs = ["WIKI/" + line.strip() for line in f]
@@ -62,7 +63,8 @@ def build_data(raw = False, random_split = True, start_date = None, end_date = N
 			# print("No pickle found, getting data for", sec)
 			try:
 				# print("Getting data for", stock_code)
-				df = quandl.get(stock_code, start_date = start_date, end_date = end_date)
+				df = quandl.get(stock_code, start_date = start_date,
+								end_date = end_date)
 
 			except quandl.errors.quandl_error.NotFoundError:
 				invalid_stock_codes += [stock_code]
@@ -71,23 +73,30 @@ def build_data(raw = False, random_split = True, start_date = None, end_date = N
 				continue
 
 			if "Adj. Close" in df.columns:
-				df = df[["Adj. Open",  "Adj. High",  "Adj. Low",  "Adj. Close", "Adj. Volume"]]
-				df.rename(columns=lambda x: x[5:].lower(), inplace=True)    # Remove the "Adj. " and make lowercase
+				df = df[["Adj. Open",  "Adj. High",  "Adj. Low",
+						 "Adj. Close", "Adj. Volume"]]
+
+				 # Remove the "Adj. " and make lowercase
+				df.rename(columns=lambda x: x[5:].lower(), inplace=True)
 			elif "Close" in df.columns:
 				df = df[["Open",  "High",  "Low",  "Close", "Volume"]]
-				df.rename(columns=lambda x: x.lower(), inplace=True)    # make lowercase
+				# make lowercase
+				df.rename(columns=lambda x: x.lower(), inplace=True)
 
 			price = df['close'].values
 			minIdxs = argrelextrema(price, np.less)
 			maxIdxs = argrelextrema(price, np.greater)
 
 
-			Y = pd.Series(name="signal", dtype=np.ndarray, index=range(0, len(price)))
+			Y = pd.Series(name="signal", dtype=np.ndarray,
+						  index=range(0, len(price)))
 			n=0
 			for _, idx in np.ndenumerate(minIdxs):
 				# if idx < MIN_MAX_PERIOD: continue
 				max_price = max(price[idx: idx + MIN_MAX_PERIOD])
-				if ((max_price - price[idx]) / price[idx]) > HI_LO_DIFF:    #if the difference between max and min is > X%
+
+				#if the difference between max and min is > X%
+				if ((max_price - price[idx]) / price[idx]) > HI_LO_DIFF:
 					Y.set_value(idx, np.array([1., 0.], np.float32))
 					n+=1
 
@@ -96,7 +105,8 @@ def build_data(raw = False, random_split = True, start_date = None, end_date = N
 			for _, idx in np.ndenumerate(maxIdxs):
 				# if idx < MIN_MAX_PERIOD: continue
 				min_price = min(price[idx: idx + MIN_MAX_PERIOD])
-				if ((price[idx] - min_price)/ min_price) > HI_LO_DIFF:  #if the difference between max and min is > X%
+				#if the difference between max and min is > X%
+				if ((price[idx] - min_price)/ min_price) > HI_LO_DIFF:
 					Y.set_value(idx, np.array([0., 1.], np.float32))
 					n+=1
 
@@ -113,7 +123,9 @@ def build_data(raw = False, random_split = True, start_date = None, end_date = N
 					elif _max_idx > _min_idx:
 						s =  np.array([0., 1.])
 					else:
-						s = np.array([0., 0.]) 	# no action taken, only occurs at the beginnings of datasets, afaik
+						# no action taken
+						# only occurs at the beginnings of datasets, afaik
+						s = np.array([0., 0.])
 
 					Y.set_value(i, s, np.float32)
 
@@ -132,19 +144,32 @@ def build_data(raw = False, random_split = True, start_date = None, end_date = N
 			for col in inputs:
 				inputs[col] = np.array(inputs[col])
 
+			c = df["close"]
 			for n in range(2, 40):
 				inputs["bband_u_"+str(n)], inputs["bband_m_"+str(n)], inputs["bband_l_"+str(n)] = ta.BBANDS(inputs, n)
 				inputs["sma_"+str(n)] = ta.SMA(inputs, timeperiod = n)
 				inputs["adx_"+str(n)] = ta.ADX(inputs, timeperiod = n)
-				inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACDEXT(inputs, fastperiod = n, slowperiod = n*2, signalperiod=n*2/3)
+
+				fast_ema = c.ewm(span = n, adjust = False).mean()
+				slow_ema = c.ewm(span = n*2, adjust = False).mean()
+				macd1 = fast_ema - slow_ema
+				macd2 = macd1.ewm(span = n*2/3, adjust = False).mean()
+				macd3 = macd1 - macd2
+				inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = macd1.values, macd2.values, macd3.values
+				# macd = [macd1.values, macd2.values, macd3.values]
+				# inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACD(inputs, n, n*2, n*2/3)
+
+				# for idx, i in enumerate(["macd_"+str(n), "macdsignal_"+str(n), "macdhist_"+str(n)]):
+				# 	for day in zip(inputs[i], macd[idx]):
+				# 		print("Type: %s N: %d PD: %.3f TA: %.3f, " % (i, n, day[1], day[0]))
 				inputs["mfi_"+str(n)] = ta.MFI(inputs, n)
 				inputs["ult_"+str(n)] = ta.ULTOSC(inputs, n, n*2, n*4)
 				inputs["willr_"+str(n)] = ta.WILLR(inputs, n)
 				inputs["slowk"], inputs["slowd"] = ta.STOCH(inputs)
 				inputs["mom_"+str(n)] = ta.MOM(inputs, n)
-				inputs["mom_"+str(n)] = ta.MOM(inputs, n)
 
 			inputs["volume"] = list(map(lambda x: x/10000, inputs["volume"]))
+			# print(inputs["macd_2"], inputs["macdsignal_2"], inputs["macdhist_2"])
 
 			df = pd.DataFrame().from_dict(inputs)
 			broken = False
@@ -186,20 +211,20 @@ def build_data(raw = False, random_split = True, start_date = None, end_date = N
 					if not os.path.isfile("./stock_data/" + sec + rand + ".scaler"):
 						scaler = prep.StandardScaler().fit(X)
 						X_norm = scaler.transform(X)
-						joblib.dump(scaler, "./stock_data/" + sec + rand + ".scaler") 
+						joblib.dump(scaler, "./stock_data/" + sec + rand + ".scaler")
 					else:
 						scaler = joblib.load("./stock_data/" + sec + rand + ".scaler")
 						X_norm = scaler.transform(X)
 
 				else:
 					X_norm = X
-			
+
 				if random_split:
 					trX, testX, trY, testY = train_test_split(X_norm, Y, test_size = test_proportion, random_state=0)
 
 				else: 		# just clips the test data off the end
 					l = len(X_norm)
-					trX, testX = X_norm[:int(-test_proportion*l)], X_norm[int(-test_proportion*l):]	
+					trX, testX = X_norm[:int(-test_proportion*l)], X_norm[int(-test_proportion*l):]
 					trY, testY = Y[:int(-test_proportion*l)], Y[int(-test_proportion*l):]
 
 				# print("Pickling...")
@@ -260,7 +285,7 @@ def build_realtime_data(stock_codes, start_date = None, end_date = None, backloa
 			historical_backload[day_idx] = day_data
 
 	''' historical_backload == [
-								[date, {"data": stock1_day1_data, "price": stock1_day1_price}, {...stock2 day 1...}], 
+								[date, {"data": stock1_day1_data, "price": stock1_day1_price}, {...stock2 day 1...}],
 								[date, {"data": stock1_day2_data, "price": stock1_day2_price}, {...stock2 day 2...}],
 								...
 							   ]
@@ -299,7 +324,7 @@ def build_realtime_data(stock_codes, start_date = None, end_date = None, backloa
 	yield historical_backload	# this is yielded when None is sent to the generator, i.e. on the first run
 
 	''' historical_backload == [
-								[date, [{"data": stock1_day1_data, "price": stock1_day1_price}, {...stock2 day 1...}]], 
+								[date, [{"data": stock1_day1_data, "price": stock1_day1_price}, {...stock2 day 1...}]],
 								[date, [{"data": stock1_day2_data, "price": stock1_day2_price}, {...stock2 day 2...}]],
 								...
 							   ]
@@ -385,16 +410,19 @@ def _build_indicators(num_secs):	# accepts a list of one-day Series
 				for col in inputs:
 					inputs[col] = np.array(inputs[col])
 
-
+				c = series["close"]
 				for n in range(2, 40):
 					inputs["bband_u_"+str(n)], inputs["bband_m_"+str(n)], inputs["bband_l_"+str(n)] = ta.BBANDS(inputs, n)
 					inputs["sma_"+str(n)] = ta.SMA(inputs, timeperiod = n)
 					inputs["adx_"+str(n)] = ta.ADX(inputs, timeperiod = n)
-					# print("\nINPUTS:", inputs)
-					if current_day == 2:	# workaround for a bug in ta-lib which I am incapable of solving
-						inputs["macd_"+str(2)], inputs["macdsignal_"+str(2)], inputs["macdhist_"+str(2)] = [np.array([np.nan]*3)] * 3
-					else:
-						inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACD(inputs, n, n*2, n*2/3)
+
+					fast_ema = c.ewm(span = n).mean()
+					slow_ema = c.ewm(span = n*2).mean()
+					macd1 = fast_ema - slow_ema
+					macd2 = macd1.ewm(span = n*2/3).mean()
+					macd3 = macd1 - macd2
+					inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = macd1.values, macd2.values, macd3.values
+
 					inputs["mfi_"+str(n)] = ta.MFI(inputs, n)
 					inputs["ult_"+str(n)] = ta.ULTOSC(inputs, n, n*2, n*4)
 					inputs["willr_"+str(n)] = ta.WILLR(inputs, n)
@@ -404,7 +432,7 @@ def _build_indicators(num_secs):	# accepts a list of one-day Series
 
 				inputs["volume"] = list(map(lambda x: x/10000, inputs["volume"]))
 
-				print(len(inputs), len(inputs["close"]), len(inputs["macd_2"]))
+				# print(len(inputs), len(inputs["close"]), len(inputs["macd_2"]))
 				series = pd.DataFrame().from_dict(inputs)
 
 				price = series["close"].iloc[-1]
@@ -467,4 +495,3 @@ def _rename_columns(df):
 		df.rename(columns=lambda x: x.lower(), inplace=True)    # make lowercase
 
 	return df
-		

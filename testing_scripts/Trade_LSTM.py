@@ -1,4 +1,7 @@
-import sys
+import sys, os
+# I welcome all suggestions for how to do this better
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 from Stock_NN_Funcs import build_data
 import numpy as np
 from keras.models import load_model, Sequential
@@ -9,15 +12,15 @@ import matplotlib.pyplot as plt
 
 TEST_CASH = 1000
 model_name = sys.argv[1]
-test_secs = ["WIKI/AAPL", "WIKI/XOM", "WIKI/F"]
+test_secs = ["WIKI/AAPL"]
 trading_days_in_year = 252
 
 
-_build_data = build_data(random_split = False, start_date = "2007-01-01", end_date = "2017-01-01")
-# _build_data = build_data(random_split = False, start_date = "2014-01-01", end_date = "2016-01-01")
+# _build_data = build_data(random_split = False, start_date = "2005-01-01", end_date = "2017-01-01")
+_build_data = build_data(random_split = False, start_date = "2014-01-01", end_date = "2016-01-01")
 _build_data.send(None)
-aapl = _build_data.send("WIKI/AAPL")
-one_input_length = len(aapl["trX"][0])
+# aapl = _build_data.send("WIKI/AAPL")
+one_input_length = 463 #len(aapl["trX"][0])
 
 # def keras_builder(builder):
 # 	# s = yield
@@ -47,20 +50,20 @@ for i in range(len(securities)):
 	plots[i][0].plot(range(len(testX)), price, linewidth = 3)
 
  # securities is in the format 	   [[
- #									 (data_AAPL_day1, price_AAPL_day1), 
- #									 (data_AAPL_day2, price_AAPL_day2)], 
+ #									 (data_AAPL_day1, price_AAPL_day1),
+ #									 (data_AAPL_day2, price_AAPL_day2)],
  #									[
- #									 (data_GOOG_day1, price_GOOG_day1), 
+ #									 (data_GOOG_day1, price_GOOG_day1),
  #									 (data_GOOG_day2, price_GOOG_day2)
  #								   ]]
 
 days = list(zip(*securities))
 
 # days is in the format 		[ 	[
-#									 (data_AAPL_day1, price_AAPL_day1), 
-#									 (data_GOOG_day1, price_GOOG_day1)], 
+#									 (data_AAPL_day1, price_AAPL_day1),
+#									 (data_GOOG_day1, price_GOOG_day1)],
 #									[
-#									 (data_AAPL_day2, price_AAPL_day2), 
+#									 (data_AAPL_day2, price_AAPL_day2),
 #									 (data_GOOG_day2, price_GOOG_day2)],
 #									...more days here
 #								]
@@ -83,6 +86,7 @@ for model_idx in range(len(all_models)):
 all_models = [Sequential(layers) for layers in all_layers]
 for model_idx in range(len(all_models)):
 	all_models[model_idx].set_weights(all_weights[model_idx])
+	# print(all_models[model_idx].summary())
 
 total_period = len(days)
 
@@ -111,7 +115,6 @@ for year in [days[i:i+trading_days_in_year] for i in range(0, total_period, trad
 			price = round(sec[1], 2)
 			# print(x)
 			prediction = np.argmax(all_models[i].predict(x, batch_size = 1)[0][0])
-			# print("Day:", day, "Prediction:", prediction)
 
 			if prediction == 0:	# buy
 				if bought_flag == 0:       #no position
@@ -122,9 +125,9 @@ for year in [days[i:i+trading_days_in_year] for i in range(0, total_period, trad
 					cash = round(cash, 2)
 					print("BUY:\tShares:", shares, "\tprice", price, "\tof ticker", i, "\tRemaining cash:", cash)
 					bought_flag = 1
-					bought_ticker = i 
+					bought_ticker = i
 					# plots[i, 0].axvline(x=day_count, color="g")
-					plots[i, 0].plot(day_count, price - 0.2, marker = "^", color = "g", ms = 5)
+					plots[i, 0].plot(day_count+1, price - 0.1, marker = "^", color = "g", ms = 5)
 
 			elif prediction == 1:	# sell
 				if bought_flag == 1:       # long position
@@ -140,7 +143,7 @@ for year in [days[i:i+trading_days_in_year] for i in range(0, total_period, trad
 						bought_flag = 0
 						bought_ticker = None
 						# plots[i, 0].axvline(x=day_count, color="r")
-						plots[i, 0].plot(day_count, price + 0.2, marker = "v", color = "r", ms = 5)
+						plots[i, 0].plot(day_count+1, price + 0.1, marker = "v", color = "r", ms = 5)
 
 			# plots[i, 0].plot(day_count, price, color="y")
 		day_count += 1
@@ -156,6 +159,8 @@ for year in [days[i:i+trading_days_in_year] for i in range(0, total_period, trad
 	print("Return:", round(cash, 2))
 	print("Total cash:", round(total_cash, 2))
 
+plt.show()
+
 print("-------------------------------------------------")
 print("|  Initial investment:", TEST_CASH, "\t\t\t|")
 # print("|  Best year result:", int(best), "\t\t\t|")
@@ -163,116 +168,3 @@ print("|  Average annual result:", int(total_cash/year_count), "\t\t|")
 print("|  Annualized return percent:", int(((total_cash / TEST_CASH) * 100)/year_count)-100, "\t\t|")
 print("|  Buys:", buys, " / Sells:", sells, "\t\t\t|")
 print("-------------------------------------------------")
-
-plt.show()
-
-# import sys
-# from Stock_NN_Funcs import build_data
-# import numpy as np
-# from keras.models import load_model
-
-
-# TEST_CASH = 100
-# model_name = sys.argv[1]
-# test_secs = ["WIKI/XOM"]
-
-
-# _build_data = build_data(random_split = False, start_date = "1999-01-01", end_date = "2017-01-01")
-# _build_data.send(None)
-# aapl = _build_data.send("WIKI/AAPL")
-# one_input_length = len(aapl["trX"][0])
-
-# def keras_builder(builder):
-# 	# s = yield
-# 	while(1):
-# 		for stock_code in test_secs:
-# 			output = builder.send(stock_code)
-# 			if output is not None:
-# 				x = np.reshape(output["trX"], (1,) + np.shape(output["trX"]))
-# 				y = np.reshape(output["trY"], (1,) + np.shape(output["trY"]))
-# 				# for x, y in zip(x, y)
-# 				yield x, y
-
-# builder = keras_builder(_build_data)
-# builder.send(None)
-
-# model = load_model(model_name)
-
-# best = 0
-# for s in test_secs:
-# 	final_cash = 0
-# 	MARGIN_CASH = 0
-# 	chunk = 0
-# 	testX = _build_data.send(s)["X_norm"]
-# 	testX = np.reshape(testX, (1,) + np.shape(testX))
-# 	price = _build_data.send(s)["price"]
-
-# 	# print(np.shape(price), np.shape(testX))
-
-# 	output = np.argmax(model.predict(testX, batch_size = len(testX))[0], axis = 1)
-# 	# print(o for o in output)
-
-# 	buys, sells = 0, 0
-# 	for prices in [price[i:i+trading_days_in_year] for i in range(0, len(price), trading_days_in_year)][0:1]:
-# 		CASH = TEST_CASH
-# 		MARGIN_CASH = 10000
-# 		shares = 0
-# 		flag = 0
-# 		short_price = 0
-# 		# print(output)
-# 		# print(price[:30])
-
-# 		for day_price, bar in zip(prices, output):
-# 			if bar == 0:    #buy
-# 				if flag == 0:       #no position
-# 					print("buy: price", day_price)
-
-# 					buys += 1
-# 					# print("Long")
-# 					shares = CASH / day_price
-# 					CASH -= shares * day_price 
-# 					flag = 1
-
-# 				# if flag == -1:    #short
-# 				# 	# print("Closing short")
-# 				# 	CASH -= shares * day_price
-# 				# 	shares = 0
-# 				# 	flag = 0
-
-# 			elif bar == 1:    #sell
-# 				# print("sell")
-# 				# if flag == 0:       # no position
-# 				# 	# print("Short")
-# 				# 	shares = MARGIN_CASH / day_price
-# 				# 	CASH += shares * day_price
-# 				# 	flag = -1
-
-# 				if flag == 1:    # long
-# 					print("sell: price", day_price)
-# 					# print("Closing long")
-# 					sells += 1
-# 					CASH += shares * day_price
-# 					shares = 0
-# 					flag = 0
-
-# 		if flag == -1:
-# 			CASH -= shares * day_price
-# 		elif flag == 1:
-# 			CASH += shares * day_price
-# 		final_cash += CASH
-# 		if CASH > best:
-# 			global best 
-# 			best = CASH
-# 			# saver.save(sess, "./"+PICKLE_NAME+".ckpt")
-
-# 		print("Year ", chunk, " returned $", int(CASH), " from an investment of $", TEST_CASH)
-# 		chunk+=1
-
-# print("-------------------------------------------------")
-# print("|  Initial investment:", TEST_CASH, "\t\t\t|")
-# print("|  Best year result:", int(best), "\t\t\t|")
-# print("|  Average annual result:", int((final_cash - TEST_CASH)/chunk), "\t\t|")
-# print("|  Annualized return percent:", int(((final_cash / TEST_CASH) * 100)/chunk)-100, "\t\t|")
-# print("|  Buys:", buys, " / Sells:", sells, "\t\t\t|")
-# print("-------------------------------------------------")
-

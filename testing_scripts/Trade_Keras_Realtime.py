@@ -1,3 +1,7 @@
+import sys, os
+# I welcome all suggestions for how to do this better
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 import sys
 from Stock_NN_Funcs import build_realtime_data
 import numpy as np
@@ -9,11 +13,11 @@ import matplotlib.pyplot as plt
 
 np.random.seed(1337) # for reproducibility
 
-TEST_CASH = 100
+TEST_CASH = 1000
 
 cash = TEST_CASH
 model_name = sys.argv[1]
-test_secs = ["WIKI/AAPL", "WIKI/XOM", "WIKI/F"]
+test_secs = ["WIKI/AAPL"]
 trading_days_in_year = 252
 
 builder = build_realtime_data(test_secs, start_date = "2014-01-01", end_date = "2016-01-01", backload = 200)
@@ -125,6 +129,11 @@ while(continue_trading):
 
 	day_count += 1
 
+if bought_flag:	#if there's a long position, close it
+	cash += shares*final_price
+	shares = 0
+	bought_flag = 0
+
 for i in range(len(test_secs)):
 	plots[i, 0].plot(range(day_count), prices[i], linewidth = 3)
 
@@ -137,8 +146,6 @@ print("|  Buys:", buys, " / Sells:", sells, "\t\t\t|")
 print("-------------------------------------------------")
 
 plt.show()
-
-
 
 
 

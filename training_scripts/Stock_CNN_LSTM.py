@@ -1,4 +1,7 @@
-import sys
+import sys, os
+# I welcome all suggestions for how to do this better
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))	 
+
 import numpy as np
 from keras.models import Sequential, Model
 from keras.layers import TimeDistributed, Dense, GRU, Convolution1D, MaxPooling1D, Lambda
