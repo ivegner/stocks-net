@@ -129,9 +129,6 @@ def build_data(raw = False, random_split = True, start_date = None,
 
 					Y.set_value(i, s, np.float32)
 
-			# x = list(zip(price[0:50], Y.values[0:50]))
-			# for i in x:
-			# 	print("{0:.2f} -- {1}".format(i[0], "sell" if np.array_equal(i[1], [0, 1]) else "buy" if np.array_equal(i[1], [1, 0]) else "nothing"))
 
 			df.reset_index(drop=True, inplace = True)
 			if isinstance(price, np.ndarray):
@@ -153,11 +150,11 @@ def build_data(raw = False, random_split = True, start_date = None,
 				fast_ema = c.ewm(span = n, adjust = False).mean()
 				slow_ema = c.ewm(span = n*2, adjust = False).mean()
 				macd1 = fast_ema - slow_ema
-				macd2 = macd1.ewm(span = n*2/3, adjust = False).mean()
+				macd2 = macd1.ewm(span = int(n*2/3), adjust = False).mean()
 				macd3 = macd1 - macd2
 				inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = macd1.values, macd2.values, macd3.values
-				# macd = [macd1.values, macd2.values, macd3.values]
-				# inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACD(inputs, n, n*2, n*2/3)
+				macd = [macd1.values, macd2.values, macd3.values]
+				# inputs["macd_"+str(n)], inputs["macdsignal_"+str(n)], inputs["macdhist_"+str(n)] = ta.MACD(inputs, n, n*2, int(n*2/3))
 
 				# for idx, i in enumerate(["macd_"+str(n), "macdsignal_"+str(n), "macdhist_"+str(n)]):
 				# 	for day in zip(inputs[i], macd[idx]):
