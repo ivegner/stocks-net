@@ -2,7 +2,15 @@
 *A neural network-based stock trading algorithm*
 
 ## Usage
-Todo
+**To be able to get data from Quandl, obtain a Quandl API key and put it in `quandl_key.txt`**
+
+To train:
+    For a full list of CLI args, call `python train_lstm.py --help`
+
+    Example: `python3 train_lstm.py -e 50 -l 4 -n 1000 WIKI/MMM WIKI/ABT WIKI/ABBV` trains a neural net with 4 recurrent layers with 1000 cells each for 50 epochs, using data from the securities MMM, ABT, and ABBV
+
+To test:
+    `python trade_lstm.py <filename of saved model>`. The stock being used to test is currently hard-coded
 
 ## What it does
 * Uses technical indicators and price data to predict the direction of stock movement and major price direction changes (peaks/troughs).

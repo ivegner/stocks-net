@@ -16,7 +16,9 @@ CACHE_DIR = 'stock_data/'
 HI_LO_DIFF = 0.03
 MIN_MAX_PERIOD = 8
 
-quandl.ApiConfig.api_key = "KDH1TFmmmcrjgynvRdWg"
+with open('quandl_key.txt') as key_file:
+    quandl.ApiConfig.api_key = key_file.readline().strip()
+
 np.random.seed(1337) # for reproducibility
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
