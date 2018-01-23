@@ -1,0 +1,9 @@
+quandl
+numpy
+pandas
+sklearn
+dill
+peakutils
+keras>2.0
+h5py
+matplotlib

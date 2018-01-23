@@ -100,7 +100,4 @@ checkpoint
 # Trained networks and stock data
 stock_data/
 network_saves/
-
-# Miscellaneous
-debug_playground
-*.sublime-workspace
+.vscode/
