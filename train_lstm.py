@@ -5,20 +5,22 @@ from keras.layers import GRU, Dense, TimeDistributed
 from keras.layers.normalization import BatchNormalization
 from keras.models import Sequential, load_model
 from keras.regularizers import l2
-from keras.callbacks import Callback, ModelCheckpoint
+from keras.callbacks import ModelCheckpoint
+from callbacks import TrainValTensorBoard
 
 from data_provider import build_train_data, get_num_features
 
 REG_CONSTANT = 0.01
 
 @click.command()
+@click.option('-n', "--model_name", required=True, type=str)
 @click.option('-e', '--n_epochs', default=50, type=int)
 @click.option('-l', '--n_layers', default=3, type=int)
-@click.option('-n', '--num_in_layer', default=500, type=int)
+@click.option('-u', '--units_in_layer', default=500, type=int)
 @click.option('--load', '--load_filename', default=None, type=str)
 @click.option('--test_sec', default='WIKI/CZR', type=str)
 @click.argument('securities', nargs=-1)
-def train_model(n_epochs, n_layers, num_in_layer, load_filename, test_sec, securities):
+def train_model(model_name, n_epochs, n_layers, units_in_layer, load_filename, test_sec, securities):
     '''Trains model according to given CLI params'''
 
     if load_filename is not None:
@@ -26,8 +28,9 @@ def train_model(n_epochs, n_layers, num_in_layer, load_filename, test_sec, secur
         last_epoch = int(load_filename.split("-")[1][0:2])
         initial_epoch = last_epoch + 1
     else:
-        model = build_model(n_layers, num_in_layer)
+        model = build_model(n_layers, units_in_layer)
         initial_epoch = 0
+
 
     test_data = build_train_data(test_sec, start_date="2014-01-01",
                                            end_date="2017-01-01")
@@ -38,14 +41,15 @@ def train_model(n_epochs, n_layers, num_in_layer, load_filename, test_sec, secur
                         nb_epoch=n_epochs,
                         verbose=2,
                         callbacks=[
-                            TestCallback((test_x, test_y)),
-                            ModelCheckpoint("lstm_model-{epoch:02d}.h5", period=5)],
-                        initial_epoch=initial_epoch)
+                            TrainValTensorBoard(model_name),
+                            ModelCheckpoint(model_name + "-{epoch:02d}.h5", period=5)],
+                        initial_epoch=initial_epoch,
+                        validation_data=(test_x, test_y))
 
     scores = model.evaluate(test_x, test_y, verbose=2)
     print("Accuracy: %.2f%%" % (scores[1]*100))
 
-    model.save("lstm_model.h5")
+    model.save(model_name + ".h5")
 
 def data_generator(securities):
     '''Generates data for keras in the proper format'''
@@ -80,16 +84,5 @@ def reshape_x_y(x, y):
     r_y = np.reshape(y, (1,) + np.shape(y) + (1,))
     return r_x, r_y
 
-class TestCallback(Callback):
-    '''Testing and logging callback'''
-    def __init__(self, test_data):
-        super().__init__()
-        self.test_data = test_data
-
-    def on_epoch_end(self, epoch, logs={}):
-        x, y = self.test_data
-        loss, acc = self.model.evaluate(x, y, verbose=0)
-        print('\nTesting loss: {0:.2f}, acc: {1:.2f}\n'.format(loss, acc))
-
 if __name__ == '__main__':
-    train_model()
+    train_model()     #pylint:disable=E1120

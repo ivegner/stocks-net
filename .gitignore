@@ -102,3 +102,4 @@ stock_data/
 network_saves/
 .vscode/
 quandl_key.txt
+logs/

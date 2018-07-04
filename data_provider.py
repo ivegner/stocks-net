@@ -141,18 +141,23 @@ def build_indicators(data):
     Builds technical indicators on dataframe
     '''
     no_args = ['PPSR', 'STOK', 'MassI', 'Chaikin', 'ULTOSC', ]
-    one_args = ["MA", "EMA", "MOM", "ROC", "ATR", "BBANDS", "STO", "TRIX", "Vortex",
+    one_args = ["MA", "MOM", "ROC", "ATR", "BBANDS", "STO", "TRIX", "Vortex",
                 "RSI", "ACCDIST", "MFI", "OBV", "FORCE", "EOM", "CCI", "COPP", "KELCH",
-                "DONCH", "STDDEV"]
+                "STDDEV"]
+    no_args_normalize = ["Chaikin"]
+    one_arg_normalize = ["MA", "ATR", "CCI", "Force", "KelChD", "KelChM", "KelChU", "Momentum", "OBV", "Ultimate_Osc"]
     # TODO: KST, TSI
     for indicator in no_args:
         data = getattr(ta, indicator)(data)
-    for period in range(2, 40, 3):
+    for period in range(2, 40, 8):
         for indicator in one_args:
             data = getattr(ta, indicator)(data, period)
         data = ta.MACD(data, period*2, period)
+        period_suffix = "_%d_%d" % (period*2, period)
+        data.drop(["MACD"+period_suffix, "MACDsign" + period_suffix])
         data = ta.ADX(data, period, period)
     data['Volume'] = data['Volume'].apply(lambda x: x/10000)
+
     return data
 
 def compute_labels(close_series):
@@ -165,7 +170,7 @@ def compute_labels(close_series):
     min_idxs = peakutils.indexes(-price, HI_LO_DIFF)
     max_idxs = peakutils.indexes(price, HI_LO_DIFF)
 
-    labels = pd.Series(name="signal", dtype=np.float32,
+    labels = pd.Series(name="signal", dtype=float,
                        index=range(0, len(price)))
 
     for idx in min_idxs:
