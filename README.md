@@ -7,9 +7,9 @@
 To train:
 For a full list of CLI args, call `python train_lstm.py --help`
 
-Example: 
+Example:
 
-`python3 train_lstm.py -e 50 -l 4 -n 1000 WIKI/MMM WIKI/ABT WIKI/ABBV` 
+`python3 train_lstm.py -e 50 -l 4 -n 1000 WIKI/MMM WIKI/ABT WIKI/ABBV`
 
 trains a neural net with 4 recurrent layers with 1000 cells each for 50 epochs, using data from the securities MMM, ABT, and ABBV
 

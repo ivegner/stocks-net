@@ -191,7 +191,8 @@ def build_indicators(data):
             data = getattr(ta, indicator)(data, period)
         data = ta.MACD(data, period * 2, period)
         period_suffix = "_%d_%d" % (period * 2, period)
-        data.drop(["MACD" + period_suffix, "MACDsign" + period_suffix])
+        # print(data.index)
+        # data.drop(["MACD" + period_suffix, "MACDsign" + period_suffix])
         data = ta.ADX(data, period, period)
     data["Volume"] = data["Volume"].apply(lambda x: x / 10000)
 
