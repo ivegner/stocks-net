@@ -9,8 +9,8 @@ Args:
 
 """
 
-class Trader:
 
+class Trader:
     def __init__(self, init_cash=1000, ticker="STOCK"):
         self.init_cash = init_cash
         self.cash = self.init_cash
@@ -30,13 +30,13 @@ class Trader:
         self._last_price = price
 
         position_changed = False
-        if prediction == 1:	# buy
+        if prediction == 1:  # buy
             if not self.open_position:
                 self._buy(price, shares)
                 position_changed = True
 
-        elif prediction == 0:	# sell
-            if self.open_position:       # long position
+        elif prediction == 0:  # sell
+            if self.open_position:  # long position
                 self._sell(price)
                 position_changed = True
 
@@ -53,18 +53,20 @@ class Trader:
         val = self.shares * price
         self.cash -= val
         self.cash = round(self.cash, 2)
-        print("BUY:\tShares: %d\tprice: %.2f\tof ticker: %s\tvalue: %.2f"
-              % (self.shares, price, self.ticker, val)
-             )
+        print(
+            "BUY:\tShares: %d\tprice: %.2f\tof ticker: %s\tvalue: %.2f"
+            % (self.shares, price, self.ticker, val)
+        )
         self.open_position = True
 
     def _sell(self, price):
         # print("Closed long on ticker", bought_ticker)
         self.stats["sells"] += 1
         net_value = round(self.shares * price, 2)
-        print("SELL:\tShares: %d\tprice: %.2f\tof ticker: %s\tvalue: %.2f"
-              % (self.shares, price, self.ticker, net_value)
-             )
+        print(
+            "SELL:\tShares: %d\tprice: %.2f\tof ticker: %s\tvalue: %.2f"
+            % (self.shares, price, self.ticker, net_value)
+        )
 
         self.cash += net_value
         self.cash = round(self.cash, 2)
@@ -83,13 +85,3 @@ class Trader:
 
         self.stats["cash"] = self.cash
         return self.stats
-
-
-
-
-
-
-
-
-
-

@@ -2,14 +2,15 @@ from keras.callbacks import TensorBoard
 import os
 import tensorflow as tf
 
+
 class TrainValTensorBoard(TensorBoard):
-    def __init__(self, model_name, log_dir='./logs', **kwargs):
+    def __init__(self, model_name, log_dir="./logs", **kwargs):
         # Make the original `TensorBoard` log to a subdirectory 'training'
-        training_log_dir = os.path.join(log_dir, model_name, 'training')
+        training_log_dir = os.path.join(log_dir, model_name, "training")
         super(TrainValTensorBoard, self).__init__(training_log_dir, **kwargs)
 
         # Log the validation metrics to a separate subdirectory
-        self.val_log_dir = os.path.join(log_dir, model_name, 'validation')
+        self.val_log_dir = os.path.join(log_dir, model_name, "validation")
 
     def set_model(self, model):
         # Setup writer for validation metrics
@@ -21,17 +22,17 @@ class TrainValTensorBoard(TensorBoard):
         # `self.val_writer`. Also rename the keys so that they can
         # be plotted on the same figure with the training metrics
         logs = logs or {}
-        val_logs = {k.replace('val_', ''): v for k, v in logs.items() if k.startswith('val_')}
+        val_logs = {k.replace("val_", ""): v for k, v in logs.items() if k.startswith("val_")}
         for name, value in val_logs.items():
             summary = tf.Summary()
-            summary_value = summary.value.add() #pylint:disable=E1101
+            summary_value = summary.value.add()  # pylint:disable=E1101
             summary_value.simple_value = value.item()
             summary_value.tag = name
             self.val_writer.add_summary(summary, epoch)
         self.val_writer.flush()
 
         # Pass the remaining logs to `TensorBoard.on_epoch_end`
-        logs = {k: v for k, v in logs.items() if not k.startswith('val_')}
+        logs = {k: v for k, v in logs.items() if not k.startswith("val_")}
         super(TrainValTensorBoard, self).on_epoch_end(epoch, logs)
 
     def on_train_end(self, logs=None):
